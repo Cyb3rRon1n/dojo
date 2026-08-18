@@ -1,0 +1,13 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  // Token optimization & efficiency plugins.
+  // All are auto-loaded at opencode launch; no per-session setup needed.
+  // Versions pinned — bump deliberately.
+  "plugin": [
+    "opencode-ponytail@4.7.3",
+    "token-optimizer-opencode@1.1.0",
+    "rtk-for-opencode@0.1.5",
+    "@javargasm/opencode-graphify@0.2.0"
+  ]
+}
