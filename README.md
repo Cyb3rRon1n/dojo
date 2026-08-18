@@ -26,21 +26,22 @@ auto-update is off by default — bump deliberately with
 
 ## Setup on a new machine
 
-Prereqs (installed however you normally do):
+One line — installs opencode, Claude Code, uv, then runs the full bootstrap
+(rtk, graphify, pinned opencode plugins, Claude Code plugins + hook):
 
 ```bash
-# opencode
-curl -fsSL https://opencode.ai/install | bash
-# Claude Code
-npm install -g @anthropic-ai/claude-code
-# uv (for graphify)
-curl -LsSf https://astral.sh/uv/install.sh | sh
+bash <(curl -fsSL https://raw.githubusercontent.com/Cyb3rRon1n/dotfiles/main/install.sh)
 ```
 
-Then:
+Prefer manual? Same result, step by step:
 
 ```bash
-git clone <this-repo-remote> ~/dotfiles
+# 1. tools
+curl -fsSL https://opencode.ai/install | bash
+npm install -g @anthropic-ai/claude-code
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# 2. stack
+git clone git@github.com:Cyb3rRon1n/dotfiles.git ~/dotfiles
 ~/dotfiles/bootstrap.sh
 ```
 
