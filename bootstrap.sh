@@ -25,9 +25,37 @@ if [[ ":$PATH:" != *":$LOCAL_BIN:"* ]]; then
   export PATH="$LOCAL_BIN:$PATH"
 fi
 
-log()  { printf '[dojo] %s\n' "$*"; }
 warn() { printf '[dojo][warn] %s\n' "$*" >&2; }
 die()  { printf '[dojo][error] %s\n' "$*" >&2; exit 1; }
+
+# ---------------------------------------------------------------------------
+# Progress: "[dojo] (n/N) step description... ok/skip/FAILED" — one line per
+# step, with a tool's normal stdout/stderr (npm install noise, graphify's
+# banner, etc.) swallowed unless that step actually fails, in which case the
+# tail of its output prints so you can debug it.
+# ---------------------------------------------------------------------------
+TOTAL_STEPS=10
+STEP_N=0
+step() {
+  STEP_N=$((STEP_N + 1))
+  printf '[dojo] (%d/%d) %-38s' "$STEP_N" "$TOTAL_STEPS" "$1..."
+}
+run_step() {
+  local desc="$1"; shift
+  step "$desc"
+  local out
+  if out="$("$@" 2>&1)"; then
+    echo "ok"
+  else
+    echo "FAILED"
+    printf '%s\n' "$out" | tail -20 >&2
+    return 1
+  fi
+}
+skip_step() {
+  step "$1"
+  echo "skip (${2:-already present})"
+}
 
 # ---------------------------------------------------------------------------
 # link_file <src> <dst> — symlink, backing up any existing regular file.
@@ -55,60 +83,63 @@ if ! command -v claude >/dev/null 2>&1; then
   warn "claude not found — install: npm install -g @anthropic-ai/claude-code"
 fi
 
-if ! command -v rtk >/dev/null 2>&1; then
-  if command -v curl >/dev/null 2>&1; then
-    log "installing rtk (prebuilt binary)"
-    curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh
-  else
-    warn "curl missing — rtk install skipped"
-  fi
+if command -v rtk >/dev/null 2>&1; then
+  skip_step "rtk binary"
+elif command -v curl >/dev/null 2>&1; then
+  run_step "rtk binary" bash -c 'curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh' \
+    || warn "rtk install failed"
+else
+  skip_step "rtk binary" "curl missing"
 fi
 
-if ! command -v graphify >/dev/null 2>&1; then
-  if command -v uv >/dev/null 2>&1; then
-    log "installing graphify CLI"
-    uv tool install graphifyy
-  else
-    warn "uv missing — graphify install skipped (install uv: https://docs.astral.sh/uv)"
-  fi
+if command -v graphify >/dev/null 2>&1; then
+  skip_step "graphify binary"
+elif command -v uv >/dev/null 2>&1; then
+  run_step "graphify binary" uv tool install graphifyy || warn "graphify install failed"
+else
+  skip_step "graphify binary" "uv missing — see https://docs.astral.sh/uv"
 fi
 
-log "installing dojo command (update/status)"
+step "dojo command (update/status)"
 mkdir -p "$LOCAL_BIN"
 ln -sf "$DOJO_DIR/dojo" "$LOCAL_BIN/dojo"
+echo "ok"
 
 # ---------------------------------------------------------------------------
 # 1. opencode global config + plugin dependencies
 # ---------------------------------------------------------------------------
-log "installing opencode global config"
+step "opencode global config"
 OCONF="$CONFIG_HOME/opencode"
 mkdir -p "$OCONF"
 link_file "$DOJO_DIR/opencode/opencode.jsonc" "$OCONF/opencode.jsonc"
 cp "$DOJO_DIR/opencode/package.json" "$OCONF/package.json"
 cp "$DOJO_DIR/opencode/package-lock.json" "$OCONF/package-lock.json"
+echo "ok"
 
 if command -v npm >/dev/null 2>&1; then
-  log "installing opencode plugin dependencies"
-  ( cd "$OCONF" && npm install --legacy-peer-deps )
+  run_step "opencode plugin dependencies" bash -c "cd '$OCONF' && npm install --legacy-peer-deps" \
+    || warn "opencode plugin install failed"
 else
-  warn "npm missing — opencode plugins will be auto-installed by opencode at first launch"
+  skip_step "opencode plugin dependencies" "npm missing — opencode installs them at first launch"
 fi
 
 # ---------------------------------------------------------------------------
 # 2. Claude Code user-level instructions
 # ---------------------------------------------------------------------------
-log "installing Claude Code user config"
+step "Claude Code user config"
 mkdir -p "$CLAUDE_HOME"
 link_file "$DOJO_DIR/claude/CLAUDE.md" "$CLAUDE_HOME/CLAUDE.md"
 link_file "$DOJO_DIR/claude/RTK.md" "$CLAUDE_HOME/RTK.md"
+echo "ok"
 
 # ---------------------------------------------------------------------------
 # 3. Claude Code plugins (marketplace + install are idempotent)
 # ---------------------------------------------------------------------------
 if command -v claude >/dev/null 2>&1; then
-  log "registering Claude Code plugins"
-  claude plugin marketplace add alexgreensh/token-optimizer 2>&1 | tail -1 || warn "token-optimizer marketplace add failed"
-  claude plugin marketplace add DietrichGebert/ponytail     2>&1 | tail -1 || warn "ponytail marketplace add failed"
+  run_step "Claude Code plugin marketplaces" bash -c '
+    claude plugin marketplace add alexgreensh/token-optimizer
+    claude plugin marketplace add DietrichGebert/ponytail
+  ' || warn "plugin marketplace registration failed"
 
   # -y/--yes was added to `claude plugin install` in a later CLI release -
   # an already-installed-and-not-upgraded claude (bootstrap.sh never
@@ -120,25 +151,36 @@ if command -v claude >/dev/null 2>&1; then
     CLAUDE_INSTALL_YES_FLAG="-y"
   fi
 
-  claude plugin install token-optimizer@alexgreensh-token-optimizer $CLAUDE_INSTALL_YES_FLAG 2>&1 | tail -1 || warn "token-optimizer install failed"
-  claude plugin install ponytail@ponytail $CLAUDE_INSTALL_YES_FLAG                2>&1 | tail -1 || warn "ponytail install failed"
+  run_step "Claude Code plugins" bash -c "
+    claude plugin install token-optimizer@alexgreensh-token-optimizer $CLAUDE_INSTALL_YES_FLAG
+    claude plugin install ponytail@ponytail $CLAUDE_INSTALL_YES_FLAG
+  " || warn "plugin install failed"
 
-  log "installing RTK Claude Code hook"
-  command -v rtk >/dev/null 2>&1 && rtk init -g --auto-patch || warn "rtk hook install skipped"
+  if command -v rtk >/dev/null 2>&1; then
+    run_step "RTK Claude Code hook" rtk init -g --auto-patch || warn "rtk hook install failed"
+  else
+    skip_step "RTK Claude Code hook" "rtk missing"
+  fi
 
-  log "installing graphify for Claude Code"
-  command -v graphify >/dev/null 2>&1 && graphify install --platform claude || warn "graphify claude install skipped"
+  if command -v graphify >/dev/null 2>&1; then
+    run_step "graphify for Claude Code" graphify install --platform claude || warn "graphify claude install failed"
+  else
+    skip_step "graphify for Claude Code" "graphify missing"
+  fi
 else
-  warn "claude not found — Claude Code plugin setup skipped"
+  skip_step "Claude Code plugin marketplaces" "claude missing"
+  skip_step "Claude Code plugins" "claude missing"
+  skip_step "RTK Claude Code hook" "claude missing"
+  skip_step "graphify for Claude Code" "claude missing"
 fi
 
 # ---------------------------------------------------------------------------
 # 4. Verify
 # ---------------------------------------------------------------------------
-log "verification"
+echo "[dojo] verification"
 echo "  plugins (opencode):   $(command -v opencode >/dev/null && echo installed || echo MISSING)"
 echo "  plugins (claude):     $(command -v claude >/dev/null && claude plugin list 2>/dev/null | grep -ciE 'ponytail|token-optimizer' || echo 0) of 2"
 echo "  rtk:                  $(command -v rtk >/dev/null && rtk --version | head -1 || echo MISSING)"
 echo "  graphify:             $(command -v graphify >/dev/null && graphify --version | head -1 || echo MISSING)"
 
-log "done. Restart opencode and Claude Code on this machine."
+echo "[dojo] done. Restart opencode and Claude Code on this machine."
