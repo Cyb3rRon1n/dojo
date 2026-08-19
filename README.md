@@ -26,7 +26,8 @@ to stay where you are.
 Restart opencode and Claude Code once it finishes, and you're working.
 
 Re-running it later (after a `git pull`) is safe — every step is a no-op if
-already done.
+already done, and only prints `ok`/`skip`/`FAILED` per step instead of
+replaying each tool's own install chatter.
 
 ## The four plugins, and what they save you
 
