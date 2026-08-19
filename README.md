@@ -1,87 +1,69 @@
 <img src="assets/dojo-lockup.svg" alt="dojo" width="420">
 
-A dojo is where you train before you spar. This one sets up AI coding tools
-on any machine — laptop, travel setup, wherever — wired with whatever
-token-optimization each one supports, plus your GitHub projects cloned and
-ready. One command, and you're warmed up and ready to work on whatever repo
-you bring them into. Anyone can point this at their own GitHub and train
-their own setup the same way.
+# dojo
 
-Supported tools: **opencode**, **Claude Code**, **GitHub Copilot CLI**,
-**OpenAI Codex CLI**, **Aider**. Each gets whatever optimizations it's
-actually capable of running (see the table below) — dojo never installs a
-tool you don't already have or ask for, and skips a tool's setup cleanly if
-it's missing.
+A training ground for AI coding tools. Clone once, run one command, and
+**opencode**, **Claude Code**, **GitHub Copilot CLI**, **OpenAI Codex CLI**,
+and **Aider** are all set up with whatever token-saving optimizations each
+one actually supports — plus your GitHub projects, cloned and ready.
 
-## Setup
+Anyone can point this at their own GitHub and train their own setup the
+same way.
+
+## Quickstart
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/Cyb3rRon1n/dojo/main/install.sh)
 ```
 
-That's it. On a machine with none of the five tools installed, it installs
-all of them, wires up whichever optimizations each one supports, clones
-`~/projects/github/repos` (your projects), and tells you at the end if you
-still need to log in to GitHub (SSH key or `gh auth login` — the one thing
-it can't do for you). No sudo needed anywhere.
+Installs whichever of the five tools you don't already have, wires up
+whatever optimizations each one supports, clones `~/projects/github/repos`,
+and prompts for GitHub auth (SSH key or `gh auth login`) if it's missing.
+No sudo, anywhere. Safe to re-run later — every step is a no-op if already
+done.
 
-At the end, in an interactive terminal, it asks `enter dojo (cd into
-~/projects/github/repos) or exit?` — press enter (or anything but `exit`)
-and it drops you straight into that directory in a fresh shell; type `exit`
-to stay where you are.
+## Catalog
 
-Restart whichever tools it set up once it finishes, and you're working.
+### Tools dojo sets up
 
-Re-running it later (after a `git pull`) is safe — every step is a no-op if
-already done, and only prints `ok`/`skip`/`FAILED` per step instead of
-replaying each tool's own install chatter.
+| Tool | What it is |
+|---|---|
+| [opencode](https://opencode.ai) | Open-source terminal coding agent |
+| [Claude Code](https://www.npmjs.com/package/@anthropic-ai/claude-code) | Anthropic's terminal coding agent |
+| [GitHub Copilot CLI](https://www.npmjs.com/package/@github/copilot) | GitHub's terminal coding agent |
+| [OpenAI Codex CLI](https://www.npmjs.com/package/@openai/codex) | OpenAI's terminal coding agent |
+| [Aider](https://aider.chat) | Open-source, git-native AI pair programmer |
 
-## The optimizations, and what each tool actually supports
+dojo never force-installs a tool you didn't ask for — `bootstrap.sh` only
+configures what's already present on the machine (`install.sh` is the one
+that offers to install all five fresh).
 
-AI coding assistants burn through their context window (their "working
-memory," measured in tokens) on command output, file re-reads, and verbose
-generated code. Once that fills up, responses get worse and sessions need
-restarting. dojo wires up whatever each tool has a real integration for —
-it doesn't force a plugin onto a tool that has no plugin system:
+### Optimizations dojo wires up
 
-- **RTK** (`rtk`) — rewrites shell commands like `git status` or `find` to
-  return only the parts an LLM actually needs, instead of raw terminal
-  output. Cuts up to 90% of the tokens a typical command dumps into context.
-  Runs automatically as a hook — nothing to invoke by hand. Has native
-  integrations for Claude Code, opencode, GitHub Copilot CLI, and OpenAI
-  Codex CLI.
+| Plugin | What it does | Works with |
+|---|---|---|
+| [RTK](https://github.com/rtk-ai/rtk) | Filters command output before it hits context — up to 90% fewer tokens per command | Claude Code, opencode, Copilot CLI, Codex CLI |
+| [graphify](https://www.npmjs.com/package/@javargasm/opencode-graphify) | Builds a queryable knowledge graph of the codebase, once, instead of re-reading files every question | Claude Code, opencode, Copilot CLI, Codex CLI, Aider |
+| [token-optimizer](https://github.com/alexgreensh/token-optimizer) | Audits the running session for context waste and gives a quality score | Claude Code, opencode |
+| [ponytail](https://github.com/DietrichGebert/ponytail) | Coding-style guardrail against over-engineering — smallest correct solution, stdlib first | Claude Code, opencode |
+| Aider's native settings | Turns on Aider's own built-in prompt caching (off by default upstream) — no plugin exists because Aider has no plugin system | Aider only |
 
-- **graphify** — turns a codebase into a queryable knowledge graph once, so
-  future questions ("where is X defined," "what calls Y") get answered by a
-  graph lookup instead of the AI re-reading files across the whole repo
-  every time. Supports all five tools dojo manages, including Aider.
+Nothing here is faked: token-optimizer and ponytail simply don't have a
+Copilot CLI / Codex CLI / Aider build yet, so dojo doesn't claim one.
 
-- **token-optimizer** — audits the running session itself: how much context
-  is used, what's wasting it, and gives a quality score. Claude Code +
-  opencode only for now (no Copilot CLI / Codex CLI / Aider build exists
-  yet).
+## Commands
 
-- **ponytail** — a coding-style guardrail that pushes toward the smallest
-  correct solution: reuse what's already there, stdlib over a new
-  dependency, no speculative abstractions. Claude Code + opencode only, same
-  reason as above.
+Once installed, a `dojo` command is on your `PATH`:
 
-- **Aider's own native settings** — Aider has no plugin/hook system, so
-  there's no RTK/ponytail/token-optimizer equivalent to install. Instead
-  dojo ships a default `~/.aider.conf.yml` that turns on Aider's own
-  built-in prompt caching (off by default upstream).
+```bash
+dojo status   # versions, GitHub auth, whether you're behind origin
+dojo update   # git pull + re-run bootstrap.sh, from wherever you cloned it
+```
 
-| Tool | RTK | graphify | token-optimizer | ponytail |
-|---|---|---|---|---|
-| Claude Code | yes | yes | yes | yes |
-| opencode | yes | yes | yes | yes |
-| GitHub Copilot CLI | yes | yes | — | — |
-| OpenAI Codex CLI | yes | yes | — | — |
-| Aider | — | yes | — | — |
+<details>
+<summary><b>Prefer manual setup?</b></summary>
 
-## Prefer manual setup?
-
-Same result, step by step:
+Same result, step by step — install only the tools you want:
 
 ```bash
 curl -fsSL https://opencode.ai/install | bash
@@ -94,18 +76,20 @@ git clone git@github.com:Cyb3rRon1n/dojo.git ~/dojo
 ~/dojo/bootstrap.sh
 ```
 
-Only install the tools you want — `bootstrap.sh` detects what's present and
-skips the rest. `bootstrap.sh` also finds its own location, so `~/dojo`
-isn't required — cloning dojo alongside your other repos (e.g.
-`~/projects/github/repos/dojo`) works identically.
+`bootstrap.sh` detects what's present and skips the rest. It also finds its
+own location, so `~/dojo` isn't required — cloning dojo alongside your
+other repos (e.g. `~/projects/github/repos/dojo`) works identically.
 
-## Reference
+</details>
+
+<details>
+<summary><b>Reference</b></summary>
 
 Only the opencode side is version-pinned, in `opencode/opencode.jsonc` /
 `opencode/package.json` — bump deliberately. Every other install path
-(Claude Code plugin marketplace, RTK's and graphify's own install scripts,
-Aider's installer) always fetches latest — don't expect versions to match
-across tools.
+(Claude Code's plugin marketplace, RTK's and graphify's own install
+scripts, Aider's installer) always fetches latest, so don't expect versions
+to match across tools.
 
 | Component | opencode version (pinned) |
 |---|---|
@@ -119,15 +103,15 @@ Files this repo does **not** touch on your machine:
   RTK `PreToolUse` hook is added, via `rtk init -g`.
 - `~/.config/opencode/package-lock.json` — regenerated by `npm install`.
 
-Once `install.sh` or `bootstrap.sh` has run once, a `dojo` command is on
-your PATH:
+GitHub Copilot CLI and OpenAI Codex CLI have no dojo-owned config files —
+RTK and graphify write their integration files directly onto those tools'
+own config paths (`~/.copilot/`, `~/.codex/`) when you run `dojo update`,
+so there's nothing for this repo to template or track.
 
-```bash
-dojo status   # dojo version, whether it's behind origin, tool/plugin versions, GitHub auth
-dojo update   # git pull + re-run bootstrap.sh, from wherever you cloned it
-```
+</details>
 
-## Layout
+<details>
+<summary><b>Layout</b></summary>
 
 ```
 opencode/
@@ -139,12 +123,10 @@ claude/
   RTK.md             # RTK reference (symlinked into ~/.claude/)
 aider/
   aider.conf.yml     # default Aider settings (symlinked to ~/.aider.conf.yml)
+assets/               # dojo's own logo/banner (mark, lockup, social preview)
 bootstrap.sh          # idempotent setup (plugins, hooks, configs, per tool)
 install.sh            # one-shot fresh-machine build-out (installs all 5 tools, calls bootstrap.sh, then clones repos/)
 dojo                  # day-to-day command: `dojo update` / `dojo status` (symlinked onto PATH by bootstrap.sh)
 ```
 
-GitHub Copilot CLI and OpenAI Codex CLI have no dojo-owned config files —
-RTK and graphify write their integration files directly onto those tools'
-own config paths (`~/.copilot/`, `~/.codex/`) when you run `dojo update`, so
-there's nothing for this repo to template or track.
+</details>
