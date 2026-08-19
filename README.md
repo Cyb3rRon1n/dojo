@@ -18,6 +18,11 @@ below, clones `~/projects/github/repos` (your projects), and tells you at
 the end if you still need to log in to GitHub (SSH key or `gh auth login` —
 the one thing it can't do for you). No sudo needed anywhere.
 
+At the end, in an interactive terminal, it asks `enter dojo (cd into
+~/projects/github/repos) or exit?` — press enter (or anything but `exit`)
+and it drops you straight into that directory in a fresh shell; type `exit`
+to stay where you are.
+
 Restart opencode and Claude Code once it finishes, and you're working.
 
 Re-running it later (after a `git pull`) is safe — every step is a no-op if

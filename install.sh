@@ -123,3 +123,21 @@ if [[ "$GIT_AUTH_OK" -eq 0 ]]; then
   warn "or"
   warn "  gh auth login"
 fi
+
+# ---------------------------------------------------------------------------
+# 5. Drop into the repos workspace, if this is an interactive terminal.
+# ---------------------------------------------------------------------------
+if [[ -t 0 && -d "$REPOS_DIR" ]]; then
+  echo
+  read -r -p "[dojo] enter dojo (cd into $REPOS_DIR) or exit? [enter/exit] " reply || reply="exit"
+  case "$reply" in
+    exit|Exit|EXIT|n|N|no|No)
+      log "staying put — cd $REPOS_DIR whenever you're ready."
+      ;;
+    *)
+      log "entering $REPOS_DIR — type 'exit' to leave."
+      cd "$REPOS_DIR"
+      exec "${SHELL:-bash}"
+      ;;
+  esac
+fi
