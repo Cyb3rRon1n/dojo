@@ -2,7 +2,7 @@
 #
 # install.sh — one-shot fresh-machine build-out for the dojo repo: opencode +
 # Claude Code + the full token-optimization stack (pinned plugins, RTK,
-# graphify, hooks) + the Projects/github/repos workspace, cloned and
+# graphify, hooks) + the projects/github/repos workspace, cloned and
 # submodule-linked.
 #
 #     bash <(curl -fsSL https://raw.githubusercontent.com/Cyb3rRon1n/dojo/main/install.sh)
@@ -20,7 +20,7 @@ die()  { printf '[dojo][error] %s\n' "$*" >&2; exit 1; }
 DOJO_DIR="${DOJO_DIR:-$HOME/dojo}"
 DOJO_REPO="git@github.com:Cyb3rRon1n/dojo.git"
 DOJO_HTTPS="https://github.com/Cyb3rRon1n/dojo.git"
-REPOS_DIR="${REPOS_DIR:-$HOME/Projects/github/repos}"
+REPOS_DIR="${REPOS_DIR:-$HOME/projects/github/repos}"
 REPOS_REPO="git@github.com:Cyb3rRon1n/my-repos.git"
 REPOS_HTTPS="https://github.com/Cyb3rRon1n/my-repos.git"
 LOCAL_BIN="$HOME/.local/bin"
@@ -104,7 +104,7 @@ log "running bootstrap"
 "$DOJO_DIR/bootstrap.sh"
 
 # ---------------------------------------------------------------------------
-# 4. Projects/github/repos — the multi-repo workspace (submodule-linked)
+# 4. projects/github/repos — the multi-repo workspace (submodule-linked)
 # ---------------------------------------------------------------------------
 if [[ -d "$REPOS_DIR/.git" ]]; then
   log "updating $REPOS_DIR"
