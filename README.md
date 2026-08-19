@@ -77,16 +77,18 @@ identically.
 
 ## Reference
 
-Plugin versions are pinned deliberately — bump them in
-`opencode/opencode.jsonc` / `opencode/package.json`, or with
-`claude plugin marketplace update` for Claude Code.
+Only the opencode side is version-pinned, in `opencode/opencode.jsonc` /
+`opencode/package.json` — bump deliberately. Claude Code always installs
+latest: `claude plugin install` has no version-pin flag, and RTK/graphify
+install via curl/uv scripts that fetch latest too. Don't expect the two
+sides to match versions.
 
-| Component | Tool | Version |
-|---|---|---|
-| RTK | opencode + Claude Code | 0.1.5 |
-| token-optimizer | opencode + Claude Code | 1.1.0 |
-| ponytail | opencode + Claude Code | 4.7.3 |
-| graphify | opencode + Claude Code | 0.2.0 |
+| Component | opencode version (pinned) |
+|---|---|
+| RTK | 0.1.5 |
+| token-optimizer | 1.1.0 |
+| ponytail | 4.7.3 |
+| graphify | 0.2.0 |
 
 Files this repo does **not** touch on your machine:
 - `~/.claude/settings.json` — hooks/settings stay machine-local. Only the
