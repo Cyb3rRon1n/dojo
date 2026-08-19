@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 #
-# install.sh — one-shot fresh-machine build-out for the dojo repo: opencode +
-# Claude Code + the full token-optimization stack (pinned plugins, RTK,
-# graphify, hooks) + the projects/github/repos workspace, cloned and
-# submodule-linked.
+# install.sh — one-shot fresh-machine build-out for the dojo repo: opencode,
+# Claude Code, GitHub Copilot CLI, OpenAI Codex CLI, and Aider, each wired up
+# with whatever token-optimization each one supports (RTK hooks, graphify,
+# and — for Claude Code + opencode only, for now — ponytail/token-optimizer)
+# + the projects/github/repos workspace, cloned and submodule-linked.
 #
 #     bash <(curl -fsSL https://raw.githubusercontent.com/Cyb3rRon1n/dojo/main/install.sh)
 #
@@ -78,6 +79,27 @@ else
   log "claude already installed ($(claude --version))"
 fi
 
+if ! command -v copilot >/dev/null 2>&1; then
+  log "installing GitHub Copilot CLI"
+  npm install -g @github/copilot || warn "copilot install failed (needs Node 22+; check npm prefix with 'npm config get prefix')"
+else
+  log "copilot already installed ($(copilot --version 2>/dev/null || echo unknown))"
+fi
+
+if ! command -v codex >/dev/null 2>&1; then
+  log "installing OpenAI Codex CLI"
+  npm install -g @openai/codex || warn "codex install failed (needs Node 22+; check npm prefix with 'npm config get prefix')"
+else
+  log "codex already installed ($(codex --version 2>/dev/null || echo unknown))"
+fi
+
+if ! command -v aider >/dev/null 2>&1; then
+  log "installing Aider"
+  curl -fsSL https://aider.chat/install.sh | sh >/dev/null || warn "aider install failed"
+else
+  log "aider already installed ($(aider --version 2>/dev/null || echo unknown))"
+fi
+
 # uv is the Python tool manager graphify installs through
 if ! command -v uv >/dev/null 2>&1; then
   log "installing uv (needed for graphify)"
@@ -116,7 +138,7 @@ else
 fi
 git -C "$REPOS_DIR" submodule update --init --recursive || warn "submodule update failed"
 
-log "done. Restart opencode and Claude Code — you're ready to launch in any repo."
+log "done. Restart opencode / Claude Code / Copilot CLI / Codex CLI / Aider — you're ready to launch in any repo."
 if [[ "$GIT_AUTH_OK" -eq 0 ]]; then
   warn "reminder: no GitHub auth was detected, so pushes will fail until you run"
   warn "  ssh-keygen -t ed25519 -C you@example.com  (then add the key on GitHub)"
