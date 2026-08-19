@@ -1,77 +1,92 @@
 # dojo — opencode + Claude Code environment builder
 
-Single source of truth for your dev environment across every machine —
-laptop, travel machine, whatever you're on. Run `install.sh` and opencode +
-Claude Code + your `Projects/github/repos` workspace are all standing and
-linked to your GitHub, ready to keep working. Anyone else can point this
-repo at their own GitHub and get the same setup for their own projects.
+One command sets up a laptop or travel machine with opencode, Claude Code,
+your GitHub projects, and four plugins that cut how many tokens those AI
+coding tools burn per session. Anyone can point this at their own GitHub and
+get the same setup.
 
-## What `install.sh` builds
-
-One shot: opencode, Claude Code, uv, the full plugin/hook stack below, and
-the `~/Projects/github/repos` workspace (cloned, submodules included, linked
-to your GitHub). The only thing it can't do for you is log you into GitHub —
-set up an SSH key or run `gh auth login` first, or the script will remind
-you at the end. After that, `git pull` / `commit` / `push` all just work in
-`~/Projects/github/repos` like any normal repo.
+## Setup
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/Cyb3rRon1n/dojo/main/install.sh)
 ```
 
-No sudo required anywhere in this flow. `npm install -g` normally needs root
-because the default prefix (`/usr/local`) is root-owned — `install.sh`
-detects that and repoints npm at `~/.npm-global` first.
+That's it. It installs opencode + Claude Code, wires up the four plugins
+below, clones `~/projects/github/repos` (your projects), and tells you at
+the end if you still need to log in to GitHub (SSH key or `gh auth login` —
+the one thing it can't do for you). No sudo needed anywhere.
 
-Prefer manual? Same result, step by step:
+Restart opencode and Claude Code once it finishes, and you're working.
+
+Re-running it later (after a `git pull`) is safe — every step is a no-op if
+already done.
+
+## The four plugins, and what they save you
+
+AI coding assistants burn through their context window (their "working
+memory," measured in tokens) on command output, file re-reads, and verbose
+generated code. Once that fills up, responses get worse and sessions need
+restarting. Each of these attacks a different source of that waste:
+
+- **RTK** (`rtk`) — rewrites shell commands like `git status` or `find` to
+  return only the parts an LLM actually needs, instead of raw terminal
+  output. Cuts up to 90% of the tokens a typical command dumps into context.
+  Runs automatically as a hook — nothing to invoke by hand.
+
+- **token-optimizer** — audits the running session itself: how much context
+  is used, what's wasting it (stale files re-read, bloated instructions),
+  and gives a quality score. Run `/token-optimizer:quick` any time for a
+  10-second health check. Catches waste RTK can't, because RTK only touches
+  command output — this looks at everything in context.
+
+- **ponytail** — a coding-style guardrail that pushes toward the smallest
+  correct solution: reuse what's already there, stdlib over a new
+  dependency, no speculative abstractions. Less generated code means fewer
+  tokens spent writing it and fewer tokens spent re-reading it later.
+
+- **graphify** — turns a codebase into a queryable knowledge graph once, so
+  future questions ("where is X defined," "what calls Y") get answered by a
+  graph lookup instead of the AI re-reading files across the whole repo
+  every time.
+
+All four load automatically at every opencode and Claude Code launch — no
+per-session setup, no remembering to turn them on.
+
+## Prefer manual setup?
+
+Same result, step by step:
 
 ```bash
-# 1. tools
 curl -fsSL https://opencode.ai/install | bash
 npm install -g @anthropic-ai/claude-code
 curl -LsSf https://astral.sh/uv/install.sh | sh
-# 2. stack
 git clone git@github.com:Cyb3rRon1n/dojo.git ~/dojo
 ~/dojo/bootstrap.sh
 ```
 
-`bootstrap.sh` is idempotent — safe to re-run after a `git pull`. Existing
-files are backed up to `.bak` before being replaced, and anything that would
-modify `~/.claude/settings.json` (RTK hook, GSD hooks) is left untouched by
-the script.
+## Reference
 
-## What this stack covers
+Plugin versions are pinned deliberately — bump them in
+`opencode/opencode.jsonc` / `opencode/package.json`, or with
+`claude plugin marketplace update` for Claude Code.
 
-| Component | Tool | Auto-loads |
+| Component | Tool | Version |
 |---|---|---|
-| `opencode-ponytail` (pinned 4.7.3) | opencode | every launch |
-| `token-optimizer-opencode` (pinned 1.1.0) | opencode | every launch |
-| `rtk-for-opencode` (pinned 0.1.5) | opencode | every launch |
-| `@javargasm/opencode-graphify` (pinned 0.2.0) | opencode | every launch |
-| ponytail plugin | Claude Code | every launch (user scope) |
-| token-optimizer plugin | Claude Code | every launch (user scope) |
-| RTK CLI + PreToolUse hook | Claude Code | every launch (global hook) |
-| graphify skill + MCP | Claude Code | every launch (skill auto-scan) |
-| Graphify CLI (graphifyy) | both | on PATH |
-| RTK CLI (rtk) | both | on PATH |
+| RTK | opencode + Claude Code | 0.1.5 |
+| token-optimizer | opencode + Claude Code | 1.1.0 |
+| ponytail | opencode + Claude Code | 4.7.3 |
+| graphify | opencode + Claude Code | 0.2.0 |
 
-All opencode plugin versions are pinned in `opencode/opencode.jsonc` and
-`opencode/package.json`. Claude Code plugins stay pinned because marketplace
-auto-update is off by default — bump deliberately with
-`claude plugin marketplace update`.
-
-## Per-machine files it does NOT touch
-
-- `~/.claude/settings.json` — hooks/settings stay machine-local (GSD, status
-  line, etc.). Only the RTK `PreToolUse` hook is added, via `rtk init -g`.
+Files this repo does **not** touch on your machine:
+- `~/.claude/settings.json` — hooks/settings stay machine-local. Only the
+  RTK `PreToolUse` hook is added, via `rtk init -g`.
 - `~/.config/opencode/package-lock.json` — regenerated by `npm install`.
 
-## Updating
+Updating later:
 
 ```bash
 git -C ~/dojo pull
 ~/dojo/bootstrap.sh
-# bump plugin versions deliberately in opencode/opencode.jsonc + opencode/package.json
 ```
 
 ## Layout
