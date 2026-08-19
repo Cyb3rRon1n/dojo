@@ -3,15 +3,20 @@
 # bootstrap.sh — idempotent setup of the opencode + Claude Code token
 # optimization stack on a (new) machine.
 #
-#   git clone git@github.com:Cyb3rRon1n/dojo.git ~/dojo
-#   ~/dojo/bootstrap.sh
+# Clone dojo wherever you like — ~/dojo, or alongside your other repos in
+# ~/projects/github/repos/dojo — this script finds its own location, so
+# either works the same:
+#
+#   git clone git@github.com:Cyb3rRon1n/dojo.git ~/dojo && ~/dojo/bootstrap.sh
+#
+# To update later, from wherever you cloned it: git pull && ./bootstrap.sh
 #
 # Safe to re-run: existing files are backed up to .bak before replacement,
 # and every step is a no-op when already in place.
 #
 set -euo pipefail
 
-DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DOJO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 CLAUDE_HOME="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 LOCAL_BIN="$HOME/.local/bin"
@@ -77,9 +82,9 @@ command -v graphify >/dev/null 2>&1 && ln -sf "$LOCAL_BIN/graphify-mcp" /usr/loc
 log "installing opencode global config"
 OCONF="$CONFIG_HOME/opencode"
 mkdir -p "$OCONF"
-link_file "$DOTFILES_DIR/opencode/opencode.jsonc" "$OCONF/opencode.jsonc"
-cp "$DOTFILES_DIR/opencode/package.json" "$OCONF/package.json"
-cp "$DOTFILES_DIR/opencode/package-lock.json" "$OCONF/package-lock.json"
+link_file "$DOJO_DIR/opencode/opencode.jsonc" "$OCONF/opencode.jsonc"
+cp "$DOJO_DIR/opencode/package.json" "$OCONF/package.json"
+cp "$DOJO_DIR/opencode/package-lock.json" "$OCONF/package-lock.json"
 
 if command -v npm >/dev/null 2>&1; then
   log "installing opencode plugin dependencies"
@@ -93,8 +98,8 @@ fi
 # ---------------------------------------------------------------------------
 log "installing Claude Code user config"
 mkdir -p "$CLAUDE_HOME"
-link_file "$DOTFILES_DIR/claude/CLAUDE.md" "$CLAUDE_HOME/CLAUDE.md"
-link_file "$DOTFILES_DIR/claude/RTK.md" "$CLAUDE_HOME/RTK.md"
+link_file "$DOJO_DIR/claude/CLAUDE.md" "$CLAUDE_HOME/CLAUDE.md"
+link_file "$DOJO_DIR/claude/RTK.md" "$CLAUDE_HOME/RTK.md"
 
 # ---------------------------------------------------------------------------
 # 3. Claude Code plugins (marketplace + install are idempotent)
