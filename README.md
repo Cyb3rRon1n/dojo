@@ -1,4 +1,4 @@
-# dojo — where AI coding tools train
+<img src="assets/dojo-lockup.svg" alt="dojo" width="420">
 
 A dojo is where you train before you spar. This one sets up AI coding tools
 on any machine — laptop, travel setup, wherever — wired with whatever
