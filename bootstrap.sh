@@ -76,6 +76,10 @@ fi
 command -v graphify >/dev/null 2>&1 && ln -sf "$LOCAL_BIN/graphify" /usr/local/bin/graphify 2>/dev/null || true
 command -v graphify >/dev/null 2>&1 && ln -sf "$LOCAL_BIN/graphify-mcp" /usr/local/bin/graphify-mcp 2>/dev/null || true
 
+log "installing dojo command (update/status)"
+mkdir -p "$LOCAL_BIN"
+ln -sf "$DOJO_DIR/dojo" "$LOCAL_BIN/dojo"
+
 # ---------------------------------------------------------------------------
 # 1. opencode global config + plugin dependencies
 # ---------------------------------------------------------------------------
