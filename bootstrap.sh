@@ -34,7 +34,7 @@ die()  { printf '[dojo][error] %s\n' "$*" >&2; exit 1; }
 # banner, etc.) swallowed unless that step actually fails, in which case the
 # tail of its output prints so you can debug it.
 # ---------------------------------------------------------------------------
-TOTAL_STEPS=10
+TOTAL_STEPS=16
 STEP_N=0
 step() {
   STEP_N=$((STEP_N + 1))
@@ -81,6 +81,18 @@ fi
 
 if ! command -v claude >/dev/null 2>&1; then
   warn "claude not found — install: npm install -g @anthropic-ai/claude-code"
+fi
+
+if ! command -v copilot >/dev/null 2>&1; then
+  warn "copilot not found — install: npm install -g @github/copilot"
+fi
+
+if ! command -v aider >/dev/null 2>&1; then
+  warn "aider not found — install: curl -fsSL https://aider.chat/install.sh | sh"
+fi
+
+if ! command -v codex >/dev/null 2>&1; then
+  warn "codex not found — install: npm install -g @openai/codex"
 fi
 
 if command -v rtk >/dev/null 2>&1; then
@@ -175,12 +187,73 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 4. Verify
+# 4. GitHub Copilot CLI — RTK + graphify only. ponytail/token-optimizer are
+#    Claude Code + opencode plugins with no Copilot CLI build yet.
+# ---------------------------------------------------------------------------
+if command -v copilot >/dev/null 2>&1; then
+  if command -v rtk >/dev/null 2>&1; then
+    run_step "RTK Copilot CLI hook" rtk init -g --copilot || warn "rtk copilot install failed"
+  else
+    skip_step "RTK Copilot CLI hook" "rtk missing"
+  fi
+  if command -v graphify >/dev/null 2>&1; then
+    run_step "graphify for Copilot CLI" graphify install --platform copilot || warn "graphify copilot install failed"
+  else
+    skip_step "graphify for Copilot CLI" "graphify missing"
+  fi
+else
+  skip_step "RTK Copilot CLI hook" "copilot missing"
+  skip_step "graphify for Copilot CLI" "copilot missing"
+fi
+
+# ---------------------------------------------------------------------------
+# 5. OpenAI Codex CLI — RTK + graphify only, same reason as Copilot above.
+# ---------------------------------------------------------------------------
+if command -v codex >/dev/null 2>&1; then
+  if command -v rtk >/dev/null 2>&1; then
+    run_step "RTK Codex CLI instructions" rtk init -g --codex || warn "rtk codex install failed"
+  else
+    skip_step "RTK Codex CLI instructions" "rtk missing"
+  fi
+  if command -v graphify >/dev/null 2>&1; then
+    run_step "graphify for Codex CLI" graphify install --platform codex || warn "graphify codex install failed"
+  else
+    skip_step "graphify for Codex CLI" "graphify missing"
+  fi
+else
+  skip_step "RTK Codex CLI instructions" "codex missing"
+  skip_step "graphify for Codex CLI" "codex missing"
+fi
+
+# ---------------------------------------------------------------------------
+# 6. Aider — no plugin/hook system, so no RTK hook exists for it. graphify
+#    supports it directly; token savings otherwise come from Aider's own
+#    native settings, defaulted via the shipped config below.
+# ---------------------------------------------------------------------------
+if command -v aider >/dev/null 2>&1; then
+  if command -v graphify >/dev/null 2>&1; then
+    run_step "graphify for Aider" graphify install --platform aider || warn "graphify aider install failed"
+  else
+    skip_step "graphify for Aider" "graphify missing"
+  fi
+  step "Aider global config"
+  link_file "$DOJO_DIR/aider/aider.conf.yml" "$HOME/.aider.conf.yml"
+  echo "ok"
+else
+  skip_step "graphify for Aider" "aider missing"
+  skip_step "Aider global config" "aider missing"
+fi
+
+# ---------------------------------------------------------------------------
+# 7. Verify
 # ---------------------------------------------------------------------------
 echo "[dojo] verification"
 echo "  plugins (opencode):   $(command -v opencode >/dev/null && echo installed || echo MISSING)"
 echo "  plugins (claude):     $(command -v claude >/dev/null && claude plugin list 2>/dev/null | grep -ciE 'ponytail|token-optimizer' || echo 0) of 2"
+echo "  copilot:              $(command -v copilot >/dev/null && echo installed || echo MISSING)"
+echo "  codex:                $(command -v codex >/dev/null && echo installed || echo MISSING)"
+echo "  aider:                $(command -v aider >/dev/null && echo installed || echo MISSING)"
 echo "  rtk:                  $(command -v rtk >/dev/null && rtk --version | head -1 || echo MISSING)"
-echo "  graphify:             $(command -v graphify >/dev/null && graphify --version | head -1 || echo MISSING)"
+echo "  graphify:              $(command -v graphify >/dev/null && graphify --version | head -1 || echo MISSING)"
 
 echo "[dojo] done. Restart opencode and Claude Code on this machine."

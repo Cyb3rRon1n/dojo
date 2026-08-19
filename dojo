@@ -37,6 +37,9 @@ case "$cmd" in
     fi
     echo "opencode:  $(command -v opencode >/dev/null 2>&1 && opencode --version || echo MISSING)"
     echo "claude:    $(command -v claude >/dev/null 2>&1 && claude --version || echo MISSING)"
+    echo "copilot:   $(command -v copilot >/dev/null 2>&1 && copilot --version 2>/dev/null || echo MISSING)"
+    echo "codex:     $(command -v codex >/dev/null 2>&1 && codex --version 2>/dev/null || echo MISSING)"
+    echo "aider:     $(command -v aider >/dev/null 2>&1 && aider --version 2>/dev/null || echo MISSING)"
     echo "plugins:   $(command -v claude >/dev/null 2>&1 && claude plugin list 2>/dev/null | grep -ciE 'ponytail|token-optimizer' || echo 0) of 2 (claude)"
     echo "rtk:       $(command -v rtk >/dev/null 2>&1 && rtk --version | head -1 || echo MISSING)"
     echo "graphify:  $(command -v graphify >/dev/null 2>&1 && graphify --version | head -1 || echo MISSING)"

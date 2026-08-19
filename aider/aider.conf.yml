@@ -1,0 +1,13 @@
+# dojo default Aider config (symlinked to ~/.aider.conf.yml by bootstrap.sh)
+#
+# Aider has no plugin/hook system like Claude Code or opencode, so there's no
+# RTK/token-optimizer/ponytail equivalent to install here — these are its own
+# native token-saving knobs, off by default upstream, turned on here.
+
+# Reuse cached prompt prefixes instead of reprocessing them every request.
+cache-prompts: true
+
+# Ping every 5 min (up to this many times) to keep the prompt cache warm
+# across pauses in a session, instead of letting it expire and reprocessing
+# the full context on your next message. 12 = ~1 hour of coverage.
+cache-keepalive-pings: 12
