@@ -1,10 +1,46 @@
-# dotfiles — opencode + Claude Code token-optimization stack
+# dojo — opencode + Claude Code environment builder
 
-Single source of truth for the token/efficiency setup across all your
-machines. Clone it, run `bootstrap.sh`, and opencode + Claude Code are
-configured the same way everywhere.
+Single source of truth for your dev environment across every machine —
+laptop, travel machine, whatever you're on. Run `install.sh` and opencode +
+Claude Code + your `Projects/github/repos` workspace are all standing and
+linked to your GitHub, ready to keep working. Anyone else can point this
+repo at their own GitHub and get the same setup for their own projects.
 
-## What this covers
+## What `install.sh` builds
+
+One shot: opencode, Claude Code, uv, the full plugin/hook stack below, and
+the `~/Projects/github/repos` workspace (cloned, submodules included, linked
+to your GitHub). The only thing it can't do for you is log you into GitHub —
+set up an SSH key or run `gh auth login` first, or the script will remind
+you at the end. After that, `git pull` / `commit` / `push` all just work in
+`~/Projects/github/repos` like any normal repo.
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/Cyb3rRon1n/dojo/main/install.sh)
+```
+
+No sudo required anywhere in this flow. `npm install -g` normally needs root
+because the default prefix (`/usr/local`) is root-owned — `install.sh`
+detects that and repoints npm at `~/.npm-global` first.
+
+Prefer manual? Same result, step by step:
+
+```bash
+# 1. tools
+curl -fsSL https://opencode.ai/install | bash
+npm install -g @anthropic-ai/claude-code
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# 2. stack
+git clone git@github.com:Cyb3rRon1n/dojo.git ~/dojo
+~/dojo/bootstrap.sh
+```
+
+`bootstrap.sh` is idempotent — safe to re-run after a `git pull`. Existing
+files are backed up to `.bak` before being replaced, and anything that would
+modify `~/.claude/settings.json` (RTK hook, GSD hooks) is left untouched by
+the script.
+
+## What this stack covers
 
 | Component | Tool | Auto-loads |
 |---|---|---|
@@ -24,32 +60,6 @@ All opencode plugin versions are pinned in `opencode/opencode.jsonc` and
 auto-update is off by default — bump deliberately with
 `claude plugin marketplace update`.
 
-## Setup on a new machine
-
-One line — installs opencode, Claude Code, uv, then runs the full bootstrap
-(rtk, graphify, pinned opencode plugins, Claude Code plugins + hook):
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/Cyb3rRon1n/dotfiles/main/install.sh)
-```
-
-Prefer manual? Same result, step by step:
-
-```bash
-# 1. tools
-curl -fsSL https://opencode.ai/install | bash
-npm install -g @anthropic-ai/claude-code
-curl -LsSf https://astral.sh/uv/install.sh | sh
-# 2. stack
-git clone git@github.com:Cyb3rRon1n/dotfiles.git ~/dotfiles
-~/dotfiles/bootstrap.sh
-```
-
-`bootstrap.sh` is idempotent — safe to re-run after a `git pull`. Existing
-files are backed up to `.bak` before being replaced, and anything that would
-modify `~/.claude/settings.json` (RTK hook, GSD hooks) is left untouched by
-the script.
-
 ## Per-machine files it does NOT touch
 
 - `~/.claude/settings.json` — hooks/settings stay machine-local (GSD, status
@@ -59,8 +69,8 @@ the script.
 ## Updating
 
 ```bash
-git -C ~/dotfiles pull
-~/dotfiles/bootstrap.sh
+git -C ~/dojo pull
+~/dojo/bootstrap.sh
 # bump plugin versions deliberately in opencode/opencode.jsonc + opencode/package.json
 ```
 
@@ -74,5 +84,6 @@ opencode/
 claude/
   CLAUDE.md          # user instructions (symlinked into ~/.claude/)
   RTK.md             # RTK reference (symlinked into ~/.claude/)
-bootstrap.sh         # idempotent setup
+bootstrap.sh          # idempotent setup (plugins, hooks, configs)
+install.sh            # one-shot fresh-machine build-out (calls bootstrap.sh, then clones repos/)
 ```
