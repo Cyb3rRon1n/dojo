@@ -3,8 +3,8 @@
 # bootstrap.sh — idempotent setup of the opencode + Claude Code token
 # optimization stack on a (new) machine.
 #
-#   git clone <your-dotfiles-remote> ~/dotfiles
-#   ~/dotfiles/bootstrap.sh
+#   git clone git@github.com:Cyb3rRon1n/dojo.git ~/dojo
+#   ~/dojo/bootstrap.sh
 #
 # Safe to re-run: existing files are backed up to .bak before replacement,
 # and every step is a no-op when already in place.
@@ -20,9 +20,9 @@ if [[ ":$PATH:" != *":$LOCAL_BIN:"* ]]; then
   export PATH="$LOCAL_BIN:$PATH"
 fi
 
-log()  { printf '[dotfiles] %s\n' "$*"; }
-warn() { printf '[dotfiles][warn] %s\n' "$*" >&2; }
-die()  { printf '[dotfiles][error] %s\n' "$*" >&2; exit 1; }
+log()  { printf '[dojo] %s\n' "$*"; }
+warn() { printf '[dojo][warn] %s\n' "$*" >&2; }
+die()  { printf '[dojo][error] %s\n' "$*" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
 # link_file <src> <dst> — symlink, backing up any existing regular file.
