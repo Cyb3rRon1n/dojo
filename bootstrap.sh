@@ -63,7 +63,6 @@ if ! command -v rtk >/dev/null 2>&1; then
     warn "curl missing — rtk install skipped"
   fi
 fi
-command -v rtk >/dev/null 2>&1 && ln -sf "$LOCAL_BIN/rtk" /usr/local/bin/rtk 2>/dev/null || true
 
 if ! command -v graphify >/dev/null 2>&1; then
   if command -v uv >/dev/null 2>&1; then
@@ -73,8 +72,6 @@ if ! command -v graphify >/dev/null 2>&1; then
     warn "uv missing — graphify install skipped (install uv: https://docs.astral.sh/uv)"
   fi
 fi
-command -v graphify >/dev/null 2>&1 && ln -sf "$LOCAL_BIN/graphify" /usr/local/bin/graphify 2>/dev/null || true
-command -v graphify >/dev/null 2>&1 && ln -sf "$LOCAL_BIN/graphify-mcp" /usr/local/bin/graphify-mcp 2>/dev/null || true
 
 log "installing dojo command (update/status)"
 mkdir -p "$LOCAL_BIN"
