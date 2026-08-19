@@ -1,9 +1,11 @@
-# dojo — opencode + Claude Code environment builder
+# dojo — where opencode and Claude Code train
 
-One command sets up a laptop or travel machine with opencode, Claude Code,
-your GitHub projects, and four plugins that cut how many tokens those AI
-coding tools burn per session. Anyone can point this at their own GitHub and
-get the same setup.
+A dojo is where you train before you spar. This one sets up opencode and
+Claude Code on any machine — laptop, travel setup, wherever — with four
+plugins that sharpen every session by cutting the tokens those tools burn,
+and your GitHub projects cloned and ready. One command, and both are warmed
+up and ready to work on whatever repo you bring them into. Anyone can point
+this at their own GitHub and train their own setup the same way.
 
 ## Setup
 
