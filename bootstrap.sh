@@ -112,8 +112,19 @@ if command -v claude >/dev/null 2>&1; then
   log "registering Claude Code plugins"
   claude plugin marketplace add alexgreensh/token-optimizer 2>&1 | tail -1 || warn "token-optimizer marketplace add failed"
   claude plugin marketplace add DietrichGebert/ponytail     2>&1 | tail -1 || warn "ponytail marketplace add failed"
-  claude plugin install token-optimizer@alexgreensh-token-optimizer -y 2>&1 | tail -1 || warn "token-optimizer install failed"
-  claude plugin install ponytail@ponytail -y                2>&1 | tail -1 || warn "ponytail install failed"
+
+  # -y/--yes was added to `claude plugin install` in a later CLI release -
+  # an already-installed-and-not-upgraded claude (bootstrap.sh never
+  # upgrades one that's already present) can predate it, and passing an
+  # unknown flag hard-fails the install instead of just being ignored.
+  # Detect support once instead of assuming it.
+  CLAUDE_INSTALL_YES_FLAG=""
+  if claude plugin install --help 2>&1 | grep -qE -- '(^|[ ,])(-y|--yes)([ ,]|$)'; then
+    CLAUDE_INSTALL_YES_FLAG="-y"
+  fi
+
+  claude plugin install token-optimizer@alexgreensh-token-optimizer $CLAUDE_INSTALL_YES_FLAG 2>&1 | tail -1 || warn "token-optimizer install failed"
+  claude plugin install ponytail@ponytail $CLAUDE_INSTALL_YES_FLAG                2>&1 | tail -1 || warn "ponytail install failed"
 
   log "installing RTK Claude Code hook"
   command -v rtk >/dev/null 2>&1 && rtk init -g --auto-patch || warn "rtk hook install skipped"
