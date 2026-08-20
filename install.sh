@@ -52,6 +52,17 @@ else
   warn "  SSH:   ssh-keygen -t ed25519 -C you@example.com && cat ~/.ssh/id_ed25519.pub"
   warn "         then add it at https://github.com/settings/keys"
   warn "  HTTPS: gh auth login"
+  # Closest thing to fully-automated single-action auth: gh's device flow.
+  # Only offered in an interactive terminal (piped one-liners just warn).
+  if [[ -t 0 ]] && command -v gh >/dev/null 2>&1; then
+    read -r -p "[dojo] run 'gh auth login' now (device flow)? [y/N] " reply || reply="n"
+    case "$reply" in
+      y|Y|yes|Yes)
+        gh auth login || warn "gh auth login did not complete — pushes will fail until it does"
+        if gh auth status >/dev/null 2>&1; then GIT_AUTH_OK=1; fi
+        ;;
+    esac
+  fi
 fi
 
 # ---------------------------------------------------------------------------
