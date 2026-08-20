@@ -34,7 +34,7 @@ die()  { printf '[dojo][error] %s\n' "$*" >&2; exit 1; }
 # banner, etc.) swallowed unless that step actually fails, in which case the
 # tail of its output prints so you can debug it.
 # ---------------------------------------------------------------------------
-TOTAL_STEPS=17
+TOTAL_STEPS=20
 STEP_N=0
 step() {
   STEP_N=$((STEP_N + 1))
@@ -253,9 +253,40 @@ if command -v copilot >/dev/null 2>&1; then
   else
     skip_step "graphify for Copilot CLI" "graphify missing"
   fi
+
+  # Experimental copilot statusline: token/context readout in the footer.
+  # Copilot CLI has no plugin system, so this is a plain stdin-JSON formatter
+  # wired via its STATUS_LINE feature flag. Never clobbers an existing
+  # statusLine the user configured.
+  step "Copilot CLI statusline"
+  mkdir -p "$HOME/.copilot"
+  ln -sf "$DOJO_DIR/copilot/statusline.sh" "$HOME/.copilot/statusline.sh"
+  if python3 - "$HOME/.copilot/settings.json" <<'PY'
+import json, os, sys
+path = sys.argv[1]
+d = {}
+if os.path.isfile(path):
+    try:
+        d = json.load(open(path))
+    except ValueError:
+        d = {}
+if d.get("statusLine"):
+    print("skip (statusLine already set)")
+    sys.exit(0)
+flags = d.setdefault("feature_flags", {}).setdefault("enabled", [])
+if "STATUS_LINE" not in flags:
+    flags.append("STATUS_LINE")
+d["statusLine"] = {"type": "command", "command": "~/.copilot/statusline.sh", "padding": 1}
+json.dump(d, open(path, "w"), indent=2)
+print("ok")
+PY
+  then
+    :
+  fi
 else
   skip_step "RTK Copilot CLI hook" "copilot missing"
   skip_step "graphify for Copilot CLI" "copilot missing"
+  skip_step "Copilot CLI statusline" "copilot missing"
 fi
 
 # ---------------------------------------------------------------------------
@@ -272,9 +303,25 @@ if command -v codex >/dev/null 2>&1; then
   else
     skip_step "graphify for Codex CLI" "graphify missing"
   fi
+
+  # Codex statusline (token/context readout in the TUI footer). Native TOML
+  # merge is out of scope: only wire it when there's no [tui] section at all,
+  # so we never create a duplicate table or fight a user-managed config.
+  if [[ -f "$HOME/.codex/config.toml" ]] && grep -qE '^\s*\[tui\]' "$HOME/.codex/config.toml"; then
+    skip_step "Codex CLI statusline" "[tui] already defined — add status_line manually"
+  else
+    step "Codex CLI statusline"
+    mkdir -p "$HOME/.codex"
+    {
+      [[ -f "$HOME/.codex/config.toml" ]] && cat "$HOME/.codex/config.toml"
+      printf '\n[tui]\nstatus_line = ["model", "context-used", "tokens", "git-branch"]\n'
+    } > "$HOME/.codex/config.toml.tmp" && mv "$HOME/.codex/config.toml.tmp" "$HOME/.codex/config.toml"
+    echo "ok"
+  fi
 else
   skip_step "RTK Codex CLI instructions" "codex missing"
   skip_step "graphify for Codex CLI" "codex missing"
+  skip_step "Codex CLI statusline" "codex missing"
 fi
 
 # ---------------------------------------------------------------------------
@@ -297,6 +344,18 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 6b. OpenClaw — token-optimizer + ponytail plugins when present.
+# ---------------------------------------------------------------------------
+if command -v openclaw >/dev/null 2>&1; then
+  run_step "OpenClaw plugins" bash -c '
+    openclaw plugins install token-optimizer
+    openclaw plugins install ponytail
+  ' || warn "openclaw plugins install failed"
+else
+  skip_step "OpenClaw plugins" "openclaw missing"
+fi
+
+# ---------------------------------------------------------------------------
 # 7. Verify
 # ---------------------------------------------------------------------------
 echo "[dojo] verification"
@@ -305,6 +364,7 @@ echo "  plugins (claude):     $(command -v claude >/dev/null && claude plugin li
 echo "  copilot:              $(command -v copilot >/dev/null && echo installed || echo MISSING)"
 echo "  codex:                $(command -v codex >/dev/null && echo installed || echo MISSING)"
 echo "  aider:                $(command -v aider >/dev/null && echo installed || echo MISSING)"
+echo "  openclaw:             $(command -v openclaw >/dev/null && echo installed || echo MISSING)"
 echo "  rtk:                  $(command -v rtk >/dev/null && rtk --version | head -1 || echo MISSING)"
 echo "  graphify:              $(command -v graphify >/dev/null && graphify --version | head -1 || echo MISSING)"
 
