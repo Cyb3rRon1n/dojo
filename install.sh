@@ -12,6 +12,10 @@
 # manual step this doesn't cover is GitHub auth (SSH key or HTTPS login) —
 # do that first, or this script will tell you to at the end.
 #
+# Interactive runs prompt for which tools to install. To skip the prompt
+# (e.g. scripted/headless), set DOJO_TOOLS to a comma list:
+#     DOJO_TOOLS=opencode,claude bash <(curl -fsSL .../install.sh)
+#
 set -euo pipefail
 
 log()  { printf '[dojo] %s\n' "$*"; }
@@ -50,10 +54,48 @@ else
   warn "  HTTPS: gh auth login"
 fi
 
+# ---------------------------------------------------------------------------
+# Tool selection — DOJO_TOOLS=opencode,claude (comma list) skips the prompt
+# for scripted/headless runs; otherwise, in an interactive terminal, ask.
+# Piped one-liners with no TTY (rare) default to installing everything, same
+# as before this option existed.
+# ---------------------------------------------------------------------------
+ALL_TOOLS=(opencode claude copilot codex aider)
+if [[ -n "${DOJO_TOOLS:-}" ]]; then
+  IFS=',' read -ra SELECTED_TOOLS <<< "$DOJO_TOOLS"
+elif [[ -t 0 ]]; then
+  echo "Which tools should dojo install/update?"
+  echo "  1) opencode"
+  echo "  2) claude   (Claude Code)"
+  echo "  3) copilot  (GitHub Copilot CLI)"
+  echo "  4) codex    (OpenAI Codex CLI)"
+  echo "  5) aider"
+  read -rp "Enter numbers/names (space or comma separated), or blank for all: " reply
+  if [[ -z "$reply" ]]; then
+    SELECTED_TOOLS=("${ALL_TOOLS[@]}")
+  else
+    reply="${reply//,/ }"
+    SELECTED_TOOLS=()
+    for tok in $reply; do
+      case "$tok" in
+        1|opencode) SELECTED_TOOLS+=(opencode) ;;
+        2|claude)   SELECTED_TOOLS+=(claude) ;;
+        3|copilot)  SELECTED_TOOLS+=(copilot) ;;
+        4|codex)    SELECTED_TOOLS+=(codex) ;;
+        5|aider)    SELECTED_TOOLS+=(aider) ;;
+        *) warn "unknown tool selection '$tok' — ignoring" ;;
+      esac
+    done
+  fi
+else
+  SELECTED_TOOLS=("${ALL_TOOLS[@]}")
+fi
+want() { printf '%s\n' "${SELECTED_TOOLS[@]}" | grep -qx "$1"; }
+
 # Node.js/npm aren't preinstalled on every fresh machine (e.g. minimal distro
 # images) — claude/copilot/codex installs below all need npm. Bootstrap it
-# with nvm (user-space, no sudo) if it's missing.
-if ! command -v npm >/dev/null 2>&1; then
+# with nvm (user-space, no sudo) if it's missing and one of those was picked.
+if { want claude || want copilot || want codex; } && ! command -v npm >/dev/null 2>&1; then
   log "npm not found — installing Node.js via nvm"
   export NVM_DIR="$HOME/.nvm"
   curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash >/dev/null 2>&1 || warn "nvm install failed"
@@ -77,39 +119,53 @@ fi
 # ---------------------------------------------------------------------------
 # 1. Core tools
 # ---------------------------------------------------------------------------
-if ! command -v opencode >/dev/null 2>&1; then
-  log "installing opencode"
-  curl -fsSL https://opencode.ai/install | bash >/dev/null || die "opencode install failed"
-else
-  log "opencode already installed ($(opencode --version))"
+if want opencode; then
+  if ! command -v opencode >/dev/null 2>&1; then
+    log "installing opencode"
+    curl -fsSL https://opencode.ai/install | bash >/dev/null || die "opencode install failed"
+  else
+    log "opencode already installed ($(opencode --version))"
+  fi
 fi
 
-if ! command -v claude >/dev/null 2>&1; then
-  log "installing Claude Code"
-  npm install -g @anthropic-ai/claude-code || die "claude install failed (no sudo used — check npm prefix with 'npm config get prefix')"
-else
-  log "claude already installed ($(claude --version))"
+if want claude; then
+  if ! command -v claude >/dev/null 2>&1; then
+    log "installing Claude Code"
+    # newer npm gates postinstall scripts (allow-scripts) — claude-code's
+    # postinstall fetches its native binary, so it must be allowed explicitly
+    # or `claude` ends up a broken shim with no binary behind it.
+    npm install -g --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code || die "claude install failed (no sudo used — check npm prefix with 'npm config get prefix')"
+    claude --version >/dev/null 2>&1 || die "claude installed but its postinstall (native binary fetch) didn't run — try: npm install -g --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code"
+  else
+    log "claude already installed ($(claude --version))"
+  fi
 fi
 
-if ! command -v copilot >/dev/null 2>&1; then
-  log "installing GitHub Copilot CLI"
-  npm install -g @github/copilot || warn "copilot install failed (needs Node 22+; check npm prefix with 'npm config get prefix')"
-else
-  log "copilot already installed ($(copilot --version 2>/dev/null || echo unknown))"
+if want copilot; then
+  if ! command -v copilot >/dev/null 2>&1; then
+    log "installing GitHub Copilot CLI"
+    npm install -g @github/copilot || warn "copilot install failed (needs Node 22+; check npm prefix with 'npm config get prefix')"
+  else
+    log "copilot already installed ($(copilot --version 2>/dev/null || echo unknown))"
+  fi
 fi
 
-if ! command -v codex >/dev/null 2>&1; then
-  log "installing OpenAI Codex CLI"
-  npm install -g @openai/codex || warn "codex install failed (needs Node 22+; check npm prefix with 'npm config get prefix')"
-else
-  log "codex already installed ($(codex --version 2>/dev/null || echo unknown))"
+if want codex; then
+  if ! command -v codex >/dev/null 2>&1; then
+    log "installing OpenAI Codex CLI"
+    npm install -g @openai/codex || warn "codex install failed (needs Node 22+; check npm prefix with 'npm config get prefix')"
+  else
+    log "codex already installed ($(codex --version 2>/dev/null || echo unknown))"
+  fi
 fi
 
-if ! command -v aider >/dev/null 2>&1; then
-  log "installing Aider"
-  curl -fsSL https://aider.chat/install.sh | sh >/dev/null || warn "aider install failed"
-else
-  log "aider already installed ($(aider --version 2>/dev/null || echo unknown))"
+if want aider; then
+  if ! command -v aider >/dev/null 2>&1; then
+    log "installing Aider"
+    curl -fsSL https://aider.chat/install.sh | sh >/dev/null || warn "aider install failed"
+  else
+    log "aider already installed ($(aider --version 2>/dev/null || echo unknown))"
+  fi
 fi
 
 # uv is the Python tool manager graphify installs through
