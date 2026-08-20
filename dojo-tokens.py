@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
 #
-# dojo tokens — read token-optimizer's live sqlite state and print real token
-# usage, cache "refresh", and context-fill threshold status. Powers both
-# `dojo tokens` and the PS1 status line (--one-line). Never errors: no data or
-# a locked db prints nothing.
+# dojo tokens — read token-optimizer's live state and print real token usage,
+# cache "refresh", and context-fill threshold status. Powers both `dojo tokens`
+# and the PS1 status line (--one-line). Never errors: no data or a locked db
+# prints nothing.
+#
+# Data sources, all read defensively (any may be absent):
+#   * opencode plugin (sqlite):  $TOKEN_OPTIMIZER_DATA_DIR or
+#     ~/.local/share/{,opencode/}token-optimizer/{trends.db,sessions/*/ses_*.db}
+#   * claude/codex plugins (json): ~/.claude/token-optimizer/ and
+#     ~/.codex/token-optimizer/ (quality-cache-*.json, live-fill.json)
 #
 import glob
+import json
 import os
 import sqlite3
 import sys
-
-DATA_DIRS = [
-    os.path.join(os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/share")), "token-optimizer"),
-]
 
 GREEN = "\033[32m"
 YELLOW = "\033[33m"
@@ -67,15 +70,31 @@ def degradation(fill):
     return "Danger"
 
 
-def find_data_root():
-    for d in DATA_DIRS:
-        if os.path.isdir(d):
-            return d
-    return None
+def norm_fill(f):
+    if f is None:
+        return None
+    f = float(f)
+    return f / 100.0 if f > 1 else f
 
 
-def find_live(root):
-    best = None
+def candidate_roots():
+    # Explicit override wins verbatim, matching the plugin's own precedence.
+    env = os.environ.get("TOKEN_OPTIMIZER_DATA_DIR")
+    if env:
+        return [env] if os.path.isdir(env) else []
+    home = os.path.expanduser("~")
+    xdg = os.environ.get("XDG_DATA_HOME", os.path.join(home, ".local", "share"))
+    roots = [
+        os.path.join(xdg, "token-optimizer"),
+        os.path.join(home, ".local", "share", "opencode", "token-optimizer"),
+        os.path.join(home, ".claude", "token-optimizer"),
+        os.path.join(home, ".codex", "token-optimizer"),
+    ]
+    return [r for r in dict.fromkeys(roots) if os.path.isdir(r)]
+
+
+def collect_sqlite(root):
+    q = None
     for db in glob.glob(os.path.join(root, "sessions", "*", "ses_*.db")):
         try:
             c = sqlite3.connect(db, timeout=0.25)
@@ -90,43 +109,88 @@ def find_live(root):
         if not row:
             continue
         entry = {
-            "db": db,
+            "stamp": row[0],
             "health": row[1],
             "efficiency": row[2],
-            "fill_pct": row[3],
+            "fill_pct": norm_fill(row[3]),
             "tool_calls": row[4],
             "compactions": row[5],
             "mode": mode[0] if mode else None,
         }
-        if best is None or row[0] > best[0]:
-            best = (row[0], entry)
-    return best[1] if best else None
-
-
-def latest_log(root):
+        if q is None or entry["stamp"] > q["stamp"]:
+            q = entry
+    log = None
     db = os.path.join(root, "trends.db")
-    if not os.path.isfile(db):
-        return None
-    try:
-        c = sqlite3.connect(db, timeout=0.25)
-        row = c.execute(
-            "SELECT model, tokens_input, tokens_output, tokens_cache_read, tokens_cache_write, cost_usd, "
-            "duration_seconds FROM session_log ORDER BY created_at DESC, id DESC LIMIT 1"
-        ).fetchone()
-        c.close()
-    except sqlite3.Error:
-        return None
-    if not row:
-        return None
-    return {
-        "model": row[0],
-        "in": row[1],
-        "out": row[2],
-        "cache_read": row[3],
-        "cache_write": row[4],
-        "cost": row[5],
-        "duration": row[6],
-    }
+    if os.path.isfile(db):
+        try:
+            c = sqlite3.connect(db, timeout=0.25)
+            row = c.execute(
+                "SELECT model, tokens_input, tokens_output, tokens_cache_read, tokens_cache_write, "
+                "cost_usd, duration_seconds, created_at "
+                "FROM session_log ORDER BY created_at DESC, id DESC LIMIT 1"
+            ).fetchone()
+            c.close()
+            if row:
+                log = {
+                    "model": row[0],
+                    "in": row[1],
+                    "out": row[2],
+                    "cache_read": row[3],
+                    "cache_write": row[4],
+                    "cost": row[5],
+                    "duration": row[6],
+                    "stamp": row[7] or 0,
+                }
+        except sqlite3.Error:
+            pass
+    return q, log
+
+
+def collect_json(root):
+    q = None
+    for f in glob.glob(os.path.join(root, "quality-cache-*.json")):
+        try:
+            d = json.load(open(f))
+            stamp = os.path.getmtime(f)
+        except (OSError, ValueError):
+            continue
+        entry = {
+            "stamp": stamp,
+            "health": d.get("resource_health") or d.get("score"),
+            "efficiency": d.get("session_efficiency"),
+            "fill_pct": norm_fill(d.get("fill_pct") or (d.get("fill_warning") or {}).get("fill_pct")),
+            "tool_calls": d.get("tool_calls"),
+            "compactions": d.get("compactions"),
+            "mode": None,
+        }
+        if q is None or stamp > q["stamp"]:
+            q = entry
+    if q:
+        try:
+            lf = json.load(open(os.path.join(root, "live-fill.json")))
+            used = lf.get("used_percentage")
+            if isinstance(used, (int, float)):
+                q["fill_pct"] = norm_fill(used)
+                ts = lf.get("timestamp") or 0
+                if ts > 1e12:  # JS Date.now() is milliseconds; everything else is seconds
+                    ts /= 1000
+                q["stamp"] = max(q["stamp"], ts)
+        except (OSError, ValueError):
+            pass
+    return q, None
+
+
+def gather():
+    q_best, log_best = None, None
+    for root in candidate_roots():
+        qs, ls = collect_sqlite(root)
+        qj, _ = collect_json(root)
+        for cand in (qs, qj):
+            if cand and (q_best is None or cand["stamp"] > q_best["stamp"]):
+                q_best = cand
+        if ls and (log_best is None or ls["stamp"] > log_best["stamp"]):
+            log_best = ls
+    return q_best, log_best
 
 
 def one_line(q, log):
@@ -136,11 +200,12 @@ def one_line(q, log):
         if log["cache_read"] or log["cache_write"]:
             parts.append(f"↻{fmt(log['cache_read'])}")
     if q:
-        if q["fill_pct"] > 0:
+        if q["fill_pct"]:
             parts.append(f"fill {q['fill_pct'] * 100:.0f}% ({degradation(q['fill_pct'])})")
-        else:
+        elif q["health"]:
             parts.append(f"health {q['health']:.0f}/100")
-        parts.append(grade(q["health"]))
+        if q["health"]:
+            parts.append(grade(q["health"]))
     if not parts:
         return ""
     health = q["health"] if q else 80
@@ -156,29 +221,30 @@ def report(q, log):
         )
     if q:
         f = q["fill_pct"]
-        fill = f"{f * 100:.0f}% ({degradation(f)})" if f > 0 else "unknown (no window for model)"
-        lines.append(
-            f"threshold: context fill {fill} · health {q['health']:.0f}/100 ({grade(q['health'])}, {band(q['health'])})"
-            f" · efficiency {q['efficiency']:.0f}/100"
-        )
+        if q["health"]:
+            fill = f"{f * 100:.0f}% ({degradation(f)})" if f else "unknown (no window for model)"
+            lines.append(
+                f"threshold: context fill {fill} · health {q['health']:.0f}/100 ({grade(q['health'])}, {band(q['health'])})"
+                + (f" · efficiency {q['efficiency']:.0f}/100" if q["efficiency"] else "")
+            )
+        elif f:
+            lines.append(f"threshold: context fill {f * 100:.0f}% ({degradation(f)})")
         meta = []
         if q["mode"]:
             meta.append(q["mode"])
-        meta.append(f"{q['tool_calls']} tool calls")
+        if q["tool_calls"]:
+            meta.append(f"{q['tool_calls']} tool calls")
         if q["compactions"]:
             meta.append(f"{q['compactions']} compactions")
-        lines.append("session:   " + ", ".join(meta))
+        if meta:
+            lines.append("session:   " + ", ".join(meta))
     if log and log["model"]:
         lines.append(f"model:     {log['model']}")
     return "\n".join(lines)
 
 
 def main():
-    root = find_data_root()
-    if not root:
-        return 0
-    q = find_live(root)
-    log = latest_log(root)
+    q, log = gather()
     if not q and not log:
         return 0
     if "--one-line" in sys.argv[1:]:
