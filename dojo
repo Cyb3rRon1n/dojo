@@ -1,13 +1,24 @@
 #!/usr/bin/env bash
 #
-# dojo — day-to-day wrapper around the dojo stack: update, status.
-# For first-time setup on a fresh machine, use install.sh instead.
+# dojo — day-to-day wrapper around the dojo stack: update, install, status,
+# doctor. For first-time setup on a fresh machine, use install.sh instead.
 #
 set -euo pipefail
 
 DOJO_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
-usage() { printf 'usage: dojo <update|status>\n'; exit 1; }
+usage() {
+  cat <<'EOF'
+usage: dojo <command>
+
+  update   git pull + re-run bootstrap.sh (restore/refresh the whole stack)
+  install  re-run install.sh (one-shot build-out, idempotent — same as fresh machine)
+  status   versions, GitHub auth, whether you're behind origin
+  doctor   verify every wiring point is intact; exit 1 if anything is broken
+  tokens   live token usage / cache refresh / context-fill thresholds (--one-line for the prompt)
+EOF
+  exit 1
+}
 
 git_auth_status() {
   if command -v ssh >/dev/null 2>&1 && ssh -o BatchMode=yes -o ConnectTimeout=5 -T git@github.com 2>&1 | grep -q "successfully authenticated"; then
@@ -19,31 +30,121 @@ git_auth_status() {
   fi
 }
 
+cmd_status() {
+  rev="$(git -C "$DOJO_DIR" rev-parse --short HEAD 2>/dev/null || echo '?')"
+  echo "dojo:      $DOJO_DIR @ $rev"
+  git -C "$DOJO_DIR" fetch -q origin 2>/dev/null || true
+  behind="$(git -C "$DOJO_DIR" rev-list --count 'HEAD..@{upstream}' 2>/dev/null || echo '?')"
+  if [[ "$behind" == "0" ]]; then
+    echo "           up to date"
+  else
+    echo "           $behind commit(s) behind — run 'dojo update'"
+  fi
+  echo "opencode:  $(command -v opencode >/dev/null 2>&1 && opencode --version || echo MISSING)"
+  echo "claude:    $(command -v claude >/dev/null 2>&1 && claude --version || echo MISSING)"
+  echo "copilot:   $(command -v copilot >/dev/null 2>&1 && copilot --version 2>/dev/null || echo MISSING)"
+  echo "codex:     $(command -v codex >/dev/null 2>&1 && codex --version 2>/dev/null || echo MISSING)"
+  echo "aider:     $(command -v aider >/dev/null 2>&1 && aider --version 2>/dev/null || echo MISSING)"
+  echo "plugins:   $(command -v claude >/dev/null 2>&1 && claude plugin list 2>/dev/null | grep -ciE 'ponytail|token-optimizer' || echo 0) of 2 (claude)"
+  echo "rtk:       $(command -v rtk >/dev/null 2>&1 && rtk --version | head -1 || echo MISSING)"
+  echo "graphify:  $(command -v graphify >/dev/null 2>&1 && graphify --version | head -1 || echo MISSING)"
+  echo "auth:      $(git_auth_status)"
+}
+
+cmd_doctor() {
+  local fail=0
+  ok()  { printf '  ok      %s\n' "$*"; }
+  bad() { printf '  BROKEN  %s\n' "$*"; fail=1; }
+
+  echo "dojo doctor — $DOJO_DIR"
+
+  echo "  shell PATH persistence (survives reboot):"
+  if grep -qs '# >>> dojo >>>' "$HOME/.bashrc" 2>/dev/null; then
+    ok "PATH block present in ~/.bashrc"
+  else
+    bad "PATH block missing from ~/.bashrc — run 'dojo update'"
+  fi
+  if [[ -f "$HOME/.zshrc" ]]; then
+    if grep -qs '# >>> dojo >>>' "$HOME/.zshrc" 2>/dev/null; then
+      ok "PATH block present in ~/.zshrc"
+    else
+      bad "PATH block missing from ~/.zshrc — run 'dojo update'"
+    fi
+  fi
+
+  echo "  tools:"
+  local t v
+  for t in opencode claude rtk graphify; do
+    if command -v "$t" >/dev/null 2>&1; then
+      v="$($t --version 2>/dev/null | head -1)"
+      ok "$t ($v)"
+    else
+      bad "$t not on PATH"
+    fi
+  done
+
+  echo "  opencode:"
+  local oconf="$HOME/.config/opencode"
+  if [[ "$(readlink -f "$oconf/opencode.jsonc" 2>/dev/null)" == "$DOJO_DIR/opencode/opencode.jsonc" ]]; then
+    ok "global config symlinked to dojo"
+  else
+    bad "opencode.jsonc not symlinked to dojo — run 'dojo update'"
+  fi
+  local np=0 p
+  for p in \
+    "$oconf/node_modules/opencode-ponytail" \
+    "$oconf/node_modules/token-optimizer-opencode" \
+    "$oconf/node_modules/rtk-for-opencode" \
+    "$oconf/node_modules/@javargasm/opencode-graphify"; do
+    [[ -d "$p" ]] && np=$((np + 1))
+  done
+  if [[ "$np" -ge 4 ]]; then
+    ok "plugin deps installed ($np/4)"
+  else
+    bad "plugin deps missing ($np/4) — run 'dojo update'"
+  fi
+
+  echo "  claude:"
+  if grep -qs 'rtk hook claude' "$HOME/.claude/settings.json" 2>/dev/null; then
+    ok "RTK PreToolUse hook present"
+  else
+    bad "RTK hook missing from settings.json — run 'dojo update'"
+  fi
+  local cp=0
+  if command -v claude >/dev/null 2>&1; then
+    cp="$(claude plugin list 2>/dev/null | grep -ciE 'ponytail|token-optimizer' || true)"
+  fi
+  if [[ "$cp" -ge 2 ]]; then
+    ok "plugins enabled ($cp/2)"
+  else
+    bad "plugins missing ($cp/2) — run 'dojo update'"
+  fi
+
+  if [[ "$fail" -eq 0 ]]; then
+    echo "  all checks passed."
+  else
+    echo "  broken items found — run 'dojo update' to repair." >&2
+  fi
+  return "$fail"
+}
+
 cmd="${1:-}"
 case "$cmd" in
   update)
     git -C "$DOJO_DIR" pull --ff-only
     "$DOJO_DIR/bootstrap.sh"
     ;;
+  install)
+    exec "$DOJO_DIR/install.sh"
+    ;;
   status)
-    rev="$(git -C "$DOJO_DIR" rev-parse --short HEAD 2>/dev/null || echo '?')"
-    echo "dojo:      $DOJO_DIR @ $rev"
-    git -C "$DOJO_DIR" fetch -q origin 2>/dev/null || true
-    behind="$(git -C "$DOJO_DIR" rev-list --count 'HEAD..@{upstream}' 2>/dev/null || echo '?')"
-    if [[ "$behind" == "0" ]]; then
-      echo "           up to date"
-    else
-      echo "           $behind commit(s) behind — run 'dojo update'"
-    fi
-    echo "opencode:  $(command -v opencode >/dev/null 2>&1 && opencode --version || echo MISSING)"
-    echo "claude:    $(command -v claude >/dev/null 2>&1 && claude --version || echo MISSING)"
-    echo "copilot:   $(command -v copilot >/dev/null 2>&1 && copilot --version 2>/dev/null || echo MISSING)"
-    echo "codex:     $(command -v codex >/dev/null 2>&1 && codex --version 2>/dev/null || echo MISSING)"
-    echo "aider:     $(command -v aider >/dev/null 2>&1 && aider --version 2>/dev/null || echo MISSING)"
-    echo "plugins:   $(command -v claude >/dev/null 2>&1 && claude plugin list 2>/dev/null | grep -ciE 'ponytail|token-optimizer' || echo 0) of 2 (claude)"
-    echo "rtk:       $(command -v rtk >/dev/null 2>&1 && rtk --version | head -1 || echo MISSING)"
-    echo "graphify:  $(command -v graphify >/dev/null 2>&1 && graphify --version | head -1 || echo MISSING)"
-    echo "auth:      $(git_auth_status)"
+    cmd_status
+    ;;
+  doctor)
+    cmd_doctor
+    ;;
+  tokens)
+    exec python3 "$DOJO_DIR/dojo-tokens.py" "$@"
     ;;
   *)
     usage
