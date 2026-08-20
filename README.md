@@ -57,8 +57,34 @@ Once installed, a `dojo` command is on your `PATH`:
 
 ```bash
 dojo status   # versions, GitHub auth, whether you're behind origin
+dojo doctor   # verify every wiring point (PATH, symlinks, hooks, plugins); exit 1 if broken
 dojo update   # git pull + re-run bootstrap.sh, from wherever you cloned it
+dojo install  # re-run install.sh (idempotent) — same one-shot as a fresh machine
+dojo tokens   # live token usage / cache refresh / context-fill thresholds
 ```
+
+`dojo update` is the self-heal: any wiring that rotted (deleted symlink, lost
+plugin, missing hook) is re-created. `dojo doctor` tells you *when* to run it.
+
+### Token status
+
+While opencode or Claude Code is running, token-optimizer writes live session
+state (per-session SQLite + a global trends DB) under
+`~/.local/share/token-optimizer/`. `dojo tokens` reads that real data and
+prints current **token usage** (input/output), **token refresh** (context-cache
+read/write), and **context-fill threshold** percentage vs the model's context
+window, colored by the same Good/Fair/Needs-Work/Poor bands the plugin itself
+uses. `dojo tokens --one-line` emits a compact colored line for prompts.
+
+### Persistence
+
+The toolchain PATH and the token-status prompt hook are written into your
+shell profile (`~/.bashrc`, plus `~/.zshrc` if present) as a marked,
+dojo-managed block — so `opencode`, `claude`, `rtk`, `graphify`, and `nvm` are
+on `PATH` after a fresh login, and every interactive prompt appends a live
+token status line (usage / refresh / fill %) whenever token data exists. The
+block is rewritten from the installed dojo version on every `dojo update`;
+don't hand-edit it.
 
 <details>
 <summary><b>Prefer manual setup?</b></summary>
@@ -126,7 +152,8 @@ aider/
 assets/               # dojo's own logo/banner (mark, lockup, social preview)
 bootstrap.sh          # idempotent setup (plugins, hooks, configs, per tool)
 install.sh            # one-shot fresh-machine build-out (installs all 5 tools, calls bootstrap.sh, then clones repos/)
-dojo                  # day-to-day command: `dojo update` / `dojo status` (symlinked onto PATH by bootstrap.sh)
+dojo                  # day-to-day command: `dojo update` / `dojo install` / `dojo status` / `dojo doctor` / `dojo tokens` (symlinked onto PATH by bootstrap.sh)
+dojo-tokens.py        # reads token-optimizer's live SQLite state (used by `dojo tokens` and the PS1 hook)
 ```
 
 </details>
