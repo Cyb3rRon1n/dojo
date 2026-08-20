@@ -34,7 +34,7 @@ die()  { printf '[dojo][error] %s\n' "$*" >&2; exit 1; }
 # banner, etc.) swallowed unless that step actually fails, in which case the
 # tail of its output prints so you can debug it.
 # ---------------------------------------------------------------------------
-TOTAL_STEPS=16
+TOTAL_STEPS=17
 STEP_N=0
 step() {
   STEP_N=$((STEP_N + 1))
@@ -112,9 +112,61 @@ else
   skip_step "graphify binary" "uv missing — see https://docs.astral.sh/uv"
 fi
 
-step "dojo command (update/status)"
+step "dojo command (update/status/install/doctor)"
 mkdir -p "$LOCAL_BIN"
 ln -sf "$DOJO_DIR/dojo" "$LOCAL_BIN/dojo"
+echo "ok"
+
+# ---------------------------------------------------------------------------
+# 0b. Shell profile — persist the toolchain PATH so opencode / claude /
+#     npm-global / nvm survive a fresh login, not just the current shell.
+#     Idempotent via a marked block (repaired on every re-run); bash by
+#     default, also zsh if it's present.
+# ---------------------------------------------------------------------------
+step "shell profile PATH persistence"
+PROFILE_MARKER="# >>> dojo >>>"
+PROFILE_TAIL="# <<< dojo <<<"
+profile_block() {
+  cat <<EOF
+$PROFILE_MARKER
+# Managed by dojo (bootstrap.sh) — do not edit by hand.
+export PATH="\$HOME/.local/bin:\$HOME/.opencode/bin:\$HOME/.npm-global/bin:\$PATH"
+[ -s "\$HOME/.nvm/nvm.sh" ] && . "\$HOME/.nvm/nvm.sh"
+
+# Token status in the prompt: live usage / cache refresh / context-fill
+# threshold from token-optimizer's state, via 'dojo tokens --one-line'.
+# Renders nothing when there's no token data yet.
+__dojo_ps1_tokens() {
+  command -v dojo >/dev/null 2>&1 || return
+  local s
+  s="\$(dojo tokens --one-line 2>/dev/null)"
+  [[ -n "\$s" ]] && printf ' %s' "\$s"
+}
+if [[ -n "\$PS1" ]] && [[ "\$PS1" != *"__dojo_ps1_tokens"* ]]; then
+  PS1="\${PS1}"' \$(__dojo_ps1_tokens)'
+fi
+$PROFILE_TAIL
+EOF
+}
+ensure_profile_block() {
+  local rc="$1" tmp
+  [[ -f "$rc" ]] || : > "$rc"
+  # Strip any previous dojo block so the installed version always wins on
+  # 'dojo update' (adds/replace the PS1 hook, PATH exports, etc.).
+  if grep -qF "$PROFILE_MARKER" "$rc"; then
+    tmp="$(mktemp)"
+    awk -v head="$PROFILE_MARKER" -v tail="$PROFILE_TAIL" '
+      $0 == head { skip=1; next }
+      skip && $0 == tail { skip=0; next }
+      !skip { print }
+    ' "$rc" > "$tmp" && mv "$tmp" "$rc"
+  fi
+  printf '\n%s\n' "$(profile_block)" >> "$rc"
+}
+if [[ -f "$HOME/.zshrc" ]]; then
+  ensure_profile_block "$HOME/.zshrc"
+fi
+ensure_profile_block "$HOME/.bashrc"
 echo "ok"
 
 # ---------------------------------------------------------------------------
