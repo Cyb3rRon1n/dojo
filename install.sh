@@ -50,6 +50,18 @@ else
   warn "  HTTPS: gh auth login"
 fi
 
+# Node.js/npm aren't preinstalled on every fresh machine (e.g. minimal distro
+# images) — claude/copilot/codex installs below all need npm. Bootstrap it
+# with nvm (user-space, no sudo) if it's missing.
+if ! command -v npm >/dev/null 2>&1; then
+  log "npm not found — installing Node.js via nvm"
+  export NVM_DIR="$HOME/.nvm"
+  curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash >/dev/null 2>&1 || warn "nvm install failed"
+  [[ -s "$NVM_DIR/nvm.sh" ]] && \. "$NVM_DIR/nvm.sh"
+  command -v nvm >/dev/null 2>&1 && nvm install --lts >/dev/null 2>&1
+  command -v npm >/dev/null 2>&1 || warn "npm still missing after nvm install — claude/copilot/codex installs below will fail"
+fi
+
 # npm's default prefix (often /usr/local) is root-owned on most distros, which
 # turns `npm install -g` into a sudo prompt this piped one-liner can't answer.
 # Repoint npm at a user-owned prefix instead — no sudo required, ever.
