@@ -142,7 +142,7 @@ __dojo_ps1_tokens() {
   s="\$(dojo tokens --one-line 2>/dev/null)"
   [[ -n "\$s" ]] && printf ' %s' "\$s"
 }
-if [[ -n "\$PS1" ]] && [[ "\$PS1" != *"__dojo_ps1_tokens"* ]]; then
+if [[ -n "\${PS1:-}" ]] && [[ "\$PS1" != *"__dojo_ps1_tokens"* ]]; then
   PS1="\${PS1}"' \$(__dojo_ps1_tokens)'
 fi
 $PROFILE_TAIL
