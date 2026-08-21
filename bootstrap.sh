@@ -104,6 +104,35 @@ else
   skip_step "rtk binary" "curl missing"
 fi
 
+# rtk is invoked by Claude Code's PreToolUse hook - a subprocess whose PATH
+# is whatever Claude Code itself was launched with, which does NOT
+# reliably include ~/.local/bin (confirmed on a real machine: rtk resolved
+# fine in an interactive login shell but was completely absent from the
+# Bash tool's own PATH, producing "rtk: command not found" on every tool
+# call). /usr/local/bin is on the default PATH for every shell type
+# regardless of profile/rc files, so mirror the resolved binary there too
+# whenever we can write to it.
+#
+# Copied, not symlinked: /usr/local/bin/rtk has to work for every account
+# on a shared machine, and a symlink into one user's home directory is
+# invisible to everyone else's stat() the moment that home dir isn't
+# world-traversable - confirmed live on this exact box (~root is 550):
+# the symlink worked for root and silently failed permission checks for
+# every other real user. cmp keeps this idempotent and self-healing
+# across users/versions without needing a plain existence check.
+if command -v rtk >/dev/null 2>&1; then
+  RTK_REAL_BIN="$(command -v rtk)"
+  if [ -L /usr/local/bin/rtk ] || ! cmp -s "$RTK_REAL_BIN" /usr/local/bin/rtk 2>/dev/null; then
+    if [ -w /usr/local/bin ] && cp -f "$RTK_REAL_BIN" /usr/local/bin/rtk 2>/dev/null; then
+      chmod 755 /usr/local/bin/rtk
+    elif command -v sudo >/dev/null 2>&1 && sudo cp -f "$RTK_REAL_BIN" /usr/local/bin/rtk 2>/dev/null; then
+      sudo chmod 755 /usr/local/bin/rtk
+    else
+      warn "could not copy rtk into /usr/local/bin - Claude Code's hook subprocess may still not find it on PATH"
+    fi
+  fi
+fi
+
 if command -v graphify >/dev/null 2>&1; then
   skip_step "graphify binary"
 elif command -v uv >/dev/null 2>&1; then
