@@ -1,0 +1,329 @@
+<#
+.SYNOPSIS
+  install.ps1 -- one-shot fresh-Windows-machine build-out for the dojo repo:
+  opencode, Claude Code, GitHub Copilot CLI, OpenAI Codex CLI, Aider, Gemini
+  CLI, OpenClaw, and Cursor, each wired up with whatever token-optimization
+  each one supports (RTK hooks, graphify, and -- for Claude Code + opencode
+  only, for now -- ponytail/token-optimizer) + the projects\github\repos
+  workspace, cloned and submodule-linked. Native Windows port of install.sh.
+
+    powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/Cyb3rRon1n/dojo/main/install.ps1 | iex"
+
+  Idempotent -- safe to re-run on a machine that's already set up. The only
+  manual step this doesn't cover is GitHub auth (SSH key or HTTPS login) --
+  do that first, or this script will tell you to at the end.
+
+  Interactive runs prompt for which tools to install. To skip the prompt
+  (e.g. scripted/headless), set $env:DOJO_TOOLS to a comma list first:
+    $env:DOJO_TOOLS = "opencode,claude"; irm .../install.ps1 | iex
+
+  Install-method notes vs. install.sh (confirmed against each tool's own
+  docs -- not guessed):
+   - opencode has no official Windows installer from opencode.ai itself;
+     `npm install -g opencode-ai` is the community-confirmed working method.
+   - Aider, uv, and OpenClaw all ship official *.ps1 installers.
+   - Cursor installs via winget (Anysphere.Cursor).
+   - rtk (rtk-ai/rtk) now ships a real Windows build
+     (rtk-x86_64-pc-windows-msvc.zip) -- bootstrap.ps1 (called at the end of
+     this script) downloads and verifies it directly.
+#>
+
+function Log($msg)  { Write-Host "[dojo] $msg" }
+function Warn($msg) { Write-Host "[dojo][warn] $msg" -ForegroundColor Yellow }
+function Die($msg)  { Write-Host "[dojo][error] $msg" -ForegroundColor Red; exit 1 }
+
+$DojoDir      = if ($env:DOJO_DIR) { $env:DOJO_DIR } else { Join-Path $HOME "dojo" }
+$DojoRepoSsh  = "git@github.com:Cyb3rRon1n/dojo.git"
+$DojoRepoHttps = "https://github.com/Cyb3rRon1n/dojo.git"
+$ReposDir     = if ($env:REPOS_DIR) { $env:REPOS_DIR } else { Join-Path $HOME "projects\github\repos" }
+$ReposRepoSsh = "git@github.com:Cyb3rRon1n/foundry.git"
+$ReposRepoHttps = "https://github.com/Cyb3rRon1n/foundry.git"
+$LocalBin     = Join-Path $HOME ".local\bin"
+$OpencodeBin  = Join-Path $HOME ".opencode\bin"
+$NpmGlobal    = Join-Path $HOME ".npm-global"
+
+foreach ($p in @($LocalBin, $OpencodeBin, (Join-Path $NpmGlobal "bin"))) {
+  if ($env:PATH -notlike "*$p*") { $env:PATH = "$p;$env:PATH" }
+}
+
+# ---------------------------------------------------------------------------
+# 0. GitHub auth -- the one thing this script can't do for you. Detect it up
+#    front so clone/push failures later point back here instead of confusing
+#    you.
+# ---------------------------------------------------------------------------
+$GitAuthOk = $false
+if (Get-Command ssh -ErrorAction SilentlyContinue) {
+  $sshOut = (ssh -o BatchMode=yes -o ConnectTimeout=5 -T git@github.com 2>&1 | Out-String)
+  if ($sshOut -match "successfully authenticated") { $GitAuthOk = $true; Log "GitHub SSH auth OK" }
+}
+if ((-not $GitAuthOk) -and (Get-Command gh -ErrorAction SilentlyContinue)) {
+  gh auth status *>$null
+  if ($LASTEXITCODE -eq 0) { $GitAuthOk = $true; Log "GitHub HTTPS auth OK (gh)" }
+}
+if (-not $GitAuthOk) {
+  Warn "no GitHub auth detected -- repo clones below will fall back to HTTPS (read-only)."
+  Warn "set up one of these before pushing anything:"
+  Warn "  SSH:   ssh-keygen -t ed25519 -C you@example.com   (then add $HOME\.ssh\id_ed25519.pub at https://github.com/settings/keys)"
+  Warn "  HTTPS: gh auth login"
+  if ((-not [Console]::IsInputRedirected) -and (Get-Command gh -ErrorAction SilentlyContinue)) {
+    $reply = Read-Host "[dojo] run 'gh auth login' now (device flow)? [y/N]"
+    if ($reply -match '^(y|yes)$') {
+      gh auth login
+      gh auth status *>$null
+      if ($LASTEXITCODE -eq 0) { $GitAuthOk = $true }
+    }
+  }
+}
+
+# ---------------------------------------------------------------------------
+# Tool selection -- $env:DOJO_TOOLS="opencode,claude" skips the prompt for
+# scripted/headless runs; otherwise, in an interactive session, ask. Piped
+# runs with no console input default to installing everything, same as
+# install.sh's non-TTY default.
+# ---------------------------------------------------------------------------
+$AllTools = @("opencode", "claude", "copilot", "codex", "aider", "gemini", "openclaw", "cursor")
+if ($env:DOJO_TOOLS) {
+  $SelectedTools = $env:DOJO_TOOLS -split ',' | ForEach-Object { $_.Trim() }
+} elseif (-not [Console]::IsInputRedirected) {
+  Write-Host "Which tools should dojo install/update?"
+  Write-Host "  1) opencode"
+  Write-Host "  2) claude   (Claude Code)"
+  Write-Host "  3) copilot  (GitHub Copilot CLI)"
+  Write-Host "  4) codex    (OpenAI Codex CLI)"
+  Write-Host "  5) aider"
+  Write-Host "  6) gemini   (Google Gemini CLI)"
+  Write-Host "  7) openclaw (agent + plugins, token-optimizer/ponytail)"
+  Write-Host "  8) cursor   (IDE -- install only, no plugin API)"
+  $reply = Read-Host "Enter numbers/names (space or comma separated), or blank for all"
+  if (-not $reply) {
+    $SelectedTools = $AllTools
+  } else {
+    $SelectedTools = @()
+    foreach ($tok in ($reply -replace ',', ' ' -split '\s+' | Where-Object { $_ })) {
+      switch ($tok) {
+        { $_ -in "1", "opencode" } { $SelectedTools += "opencode" }
+        { $_ -in "2", "claude" }   { $SelectedTools += "claude" }
+        { $_ -in "3", "copilot" }  { $SelectedTools += "copilot" }
+        { $_ -in "4", "codex" }    { $SelectedTools += "codex" }
+        { $_ -in "5", "aider" }    { $SelectedTools += "aider" }
+        { $_ -in "6", "gemini" }   { $SelectedTools += "gemini" }
+        { $_ -in "7", "openclaw" } { $SelectedTools += "openclaw" }
+        { $_ -in "8", "cursor" }   { $SelectedTools += "cursor" }
+        default { Warn "unknown tool selection '$tok' -- ignoring" }
+      }
+    }
+  }
+} else {
+  $SelectedTools = $AllTools
+}
+function Want($tool) { $SelectedTools -contains $tool }
+
+# Node.js/npm aren't preinstalled on every fresh machine -- claude/copilot/
+# codex/gemini installs below all need npm. Bootstrap it via winget if
+# missing and one of those was picked (simpler than nvm-windows' separate
+# version-management paradigm for the one thing dojo actually needs: npm on
+# PATH).
+if ((Want "claude") -or (Want "copilot") -or (Want "codex") -or (Want "gemini")) {
+  if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+    Log "npm not found -- installing Node.js LTS via winget"
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+      winget install --id OpenJS.NodeJS.LTS -e --accept-source-agreements --accept-package-agreements | Out-Null
+      $env:PATH = [Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [Environment]::GetEnvironmentVariable("PATH", "User")
+      if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { Warn "npm still missing after Node.js install -- claude/copilot/codex/gemini installs below will fail" }
+    } else {
+      Warn "npm missing and winget unavailable -- install Node.js manually from https://nodejs.org, then re-run this script"
+    }
+  }
+}
+
+# npm's default Windows prefix (under Program Files) is admin-protected,
+# which turns `npm install -g` into an EPERM this script can't answer.
+# Repoint npm at a user-owned prefix instead -- no elevation required, ever.
+if (Get-Command npm -ErrorAction SilentlyContinue) {
+  $npmPrefix = (npm config get prefix 2>$null)
+  if ($npmPrefix -and ($npmPrefix -ne $NpmGlobal)) {
+    $writable = $true
+    try {
+      $testFile = Join-Path $npmPrefix ".dojo-write-test"
+      New-Item -ItemType File -Path $testFile -Force -ErrorAction Stop | Out-Null
+      Remove-Item $testFile -Force -ErrorAction SilentlyContinue
+    } catch { $writable = $false }
+    if (-not $writable) {
+      Log "npm global prefix ($npmPrefix) isn't user-writable -- switching to $NpmGlobal"
+      New-Item -ItemType Directory -Path $NpmGlobal -Force | Out-Null
+      npm config set prefix $NpmGlobal
+      if ($env:PATH -notlike "*$NpmGlobal*") { $env:PATH = "$NpmGlobal;$NpmGlobal\bin;$env:PATH" }
+    }
+  }
+}
+
+# ---------------------------------------------------------------------------
+# 1. Core tools
+# ---------------------------------------------------------------------------
+if (Want "opencode") {
+  if (-not (Get-Command opencode -ErrorAction SilentlyContinue)) {
+    Log "installing opencode"
+    if (Get-Command npm -ErrorAction SilentlyContinue) {
+      npm install -g opencode-ai *>$null
+      if ($LASTEXITCODE -ne 0) { Warn "opencode install failed (community npm package, unofficial -- see https://opencode.ai)" }
+    } else {
+      Warn "opencode needs npm -- install Node.js first, or see https://opencode.ai"
+    }
+  } else {
+    Log "opencode already installed ($(opencode --version))"
+  }
+}
+
+if (Want "claude") {
+  if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
+    Log "installing Claude Code"
+    # newer npm gates postinstall scripts (allow-scripts) -- claude-code's
+    # postinstall fetches its native binary, so it must be allowed explicitly
+    # or `claude` ends up a broken shim with no binary behind it.
+    npm install -g --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code
+    if ($LASTEXITCODE -ne 0) { Die "claude install failed (no elevation used -- check npm prefix with 'npm config get prefix')" }
+    claude --version *>$null
+    if ($LASTEXITCODE -ne 0) { Die "claude installed but its postinstall (native binary fetch) didn't run -- try: npm install -g --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code" }
+  } else {
+    Log "claude already installed ($(claude --version))"
+  }
+}
+
+if (Want "copilot") {
+  if (-not (Get-Command copilot -ErrorAction SilentlyContinue)) {
+    Log "installing GitHub Copilot CLI"
+    npm install -g @github/copilot
+    if ($LASTEXITCODE -ne 0) { Warn "copilot install failed (needs Node 22+; check npm prefix with 'npm config get prefix')" }
+  } else {
+    Log "copilot already installed"
+  }
+}
+
+if (Want "codex") {
+  if (-not (Get-Command codex -ErrorAction SilentlyContinue)) {
+    Log "installing OpenAI Codex CLI"
+    npm install -g @openai/codex
+    if ($LASTEXITCODE -ne 0) { Warn "codex install failed (needs Node 22+; check npm prefix with 'npm config get prefix')" }
+  } else {
+    Log "codex already installed"
+  }
+}
+
+if (Want "aider") {
+  if (-not (Get-Command aider -ErrorAction SilentlyContinue)) {
+    Log "installing Aider"
+    try {
+      Invoke-Expression (Invoke-RestMethod -Uri "https://aider.chat/install.ps1")
+    } catch { Warn "aider install failed: $($_.Exception.Message)" }
+  } else {
+    Log "aider already installed"
+  }
+}
+
+if (Want "gemini") {
+  if (-not (Get-Command gemini -ErrorAction SilentlyContinue)) {
+    Log "installing Google Gemini CLI"
+    npm install -g @google/gemini-cli
+    if ($LASTEXITCODE -ne 0) { Warn "gemini install failed" }
+  } else {
+    Log "gemini already installed"
+  }
+}
+
+if (Want "openclaw") {
+  if (-not (Get-Command openclaw -ErrorAction SilentlyContinue)) {
+    Log "installing OpenClaw"
+    try {
+      Invoke-Expression (Invoke-RestMethod -Uri "https://openclaw.ai/install.ps1")
+    } catch { Warn "openclaw install failed: $($_.Exception.Message)" }
+  } else {
+    Log "openclaw already installed"
+  }
+}
+
+if (Want "cursor") {
+  if (-not (Get-Command cursor -ErrorAction SilentlyContinue)) {
+    Log "installing Cursor (IDE)"
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+      winget install --id=Anysphere.Cursor -e --accept-source-agreements --accept-package-agreements
+      if ($LASTEXITCODE -ne 0) { Warn "cursor install failed" }
+    } else {
+      Warn "cursor needs winget (App Installer, ships with Windows 10 1709+/11) -- see https://cursor.com/downloads"
+    }
+  } else {
+    Log "cursor already installed"
+  }
+}
+
+# uv is the Python tool manager graphify installs through
+if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
+  Log "installing uv (needed for graphify)"
+  try {
+    Invoke-Expression (Invoke-RestMethod -Uri "https://astral.sh/uv/install.ps1")
+  } catch { Warn "uv install failed -- graphify will be skipped by bootstrap" }
+} else {
+  Log "uv already installed"
+}
+
+# ---------------------------------------------------------------------------
+# 2. dojo checkout
+# ---------------------------------------------------------------------------
+if (Test-Path (Join-Path $DojoDir ".git")) {
+  Log "updating $DojoDir"
+  git -C $DojoDir pull --ff-only
+  if ($LASTEXITCODE -ne 0) { Warn "dojo pull failed" }
+} else {
+  Log "cloning dojo -> $DojoDir"
+  git clone $DojoRepoSsh $DojoDir 2>$null
+  if ($LASTEXITCODE -ne 0) {
+    git clone $DojoRepoHttps $DojoDir
+    if ($LASTEXITCODE -ne 0) { Die "clone failed" }
+  }
+}
+
+# ---------------------------------------------------------------------------
+# 3. Full stack (plugins, hooks, binaries, configs)
+# ---------------------------------------------------------------------------
+Log "running bootstrap"
+& (Join-Path $DojoDir "bootstrap.ps1")
+
+# ---------------------------------------------------------------------------
+# 4. projects\github\repos -- the multi-repo workspace (submodule-linked)
+# ---------------------------------------------------------------------------
+if (Test-Path (Join-Path $ReposDir ".git")) {
+  Log "updating $ReposDir"
+  git -C $ReposDir pull --ff-only
+  if ($LASTEXITCODE -ne 0) { Warn "repos pull failed" }
+} else {
+  Log "cloning repos workspace -> $ReposDir"
+  New-Item -ItemType Directory -Path (Split-Path $ReposDir -Parent) -Force | Out-Null
+  git clone $ReposRepoSsh $ReposDir 2>$null
+  if ($LASTEXITCODE -ne 0) {
+    git clone $ReposRepoHttps $ReposDir
+    if ($LASTEXITCODE -ne 0) { Die "repos clone failed" }
+  }
+}
+git -C $ReposDir submodule update --init --recursive
+if ($LASTEXITCODE -ne 0) { Warn "submodule update failed" }
+
+Log "done. Restart opencode / Claude Code / Copilot CLI / Codex CLI / Aider / Gemini / OpenClaw / Cursor -- you're ready to launch in any repo."
+if (-not $GitAuthOk) {
+  Warn "reminder: no GitHub auth was detected, so pushes will fail until you run"
+  Warn "  ssh-keygen -t ed25519 -C you@example.com   (then add the key on GitHub)"
+  Warn "or"
+  Warn "  gh auth login"
+}
+
+# ---------------------------------------------------------------------------
+# 5. Drop into the repos workspace, if this is an interactive session.
+# ---------------------------------------------------------------------------
+if ((-not [Console]::IsInputRedirected) -and (Test-Path $ReposDir)) {
+  Write-Host ""
+  $reply = Read-Host "[dojo] enter dojo (cd into $ReposDir) or exit? [enter/exit]"
+  if ($reply -match '^(exit|n|no)$') {
+    Log "staying put -- cd $ReposDir whenever you're ready."
+  } else {
+    Log "entering $ReposDir -- type 'exit' to leave."
+    Set-Location $ReposDir
+  }
+}

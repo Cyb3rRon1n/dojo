@@ -17,11 +17,27 @@ same way.
 bash <(curl -fsSL https://raw.githubusercontent.com/Cyb3rRon1n/dojo/main/install.sh)
 ```
 
+```powershell
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/Cyb3rRon1n/dojo/main/install.ps1 | iex"
+```
+
 Installs whichever of the eight tools you don't already have, wires up
 whatever optimizations each one supports, clones `~/projects/github/repos`,
 and prompts for GitHub auth (SSH key or `gh auth login`) if it's missing.
-No sudo, anywhere. Safe to re-run later — every step is a no-op if already
-done.
+No sudo/elevation required for any of it. Safe to re-run later — every step
+is a no-op if already done.
+
+**Windows notes** (native PowerShell, not WSL):
+- The `dojo` CLI itself (`dojo update`/`status`/`doctor`/`tokens`, and the
+  live token-usage prompt segment) is a bash script — `bootstrap.ps1` wires
+  it through Git for Windows' `bash.exe` if found (near-universal, since
+  it ships with Git for Windows). Everything else works without it.
+- `rtk` now ships a real Windows build and installs automatically, same as
+  Linux/Mac.
+- Prefer WSL instead? `install.sh`/`bootstrap.sh` already run unmodified
+  inside it — just run the bash Quickstart command above from your WSL
+  shell instead of `install.ps1`.
 
 ## Catalog
 
@@ -167,14 +183,17 @@ aider/
   aider.conf.yml     # default Aider settings (symlinked to ~/.aider.conf.yml)
 copilot/
   statusline.sh      # Copilot CLI footer readout (linked into ~/.copilot/)
+  statusline.ps1     # same, native Windows port (no python3 dependency)
 tests/
   test_dojo.bats     # bats suite (SQLite/JSON fixtures, idempotence, pins)
 .github/workflows/
   ci.yml             # py_compile + bats + shellcheck on main/PR
 assets/               # dojo's own logo/banner (mark, lockup, social preview)
 bootstrap.sh          # idempotent setup (plugins, hooks, configs, per tool)
+bootstrap.ps1         # same, native Windows port (PowerShell, run by install.ps1)
 install.sh            # one-shot fresh-machine build-out (installs all 8 tools, calls bootstrap.sh, then clones repos/)
-dojo                  # day-to-day command: `dojo update` / `dojo install` / `dojo status` / `dojo doctor` / `dojo tokens` (symlinked onto PATH by bootstrap.sh)
+install.ps1           # same, native Windows port -- installs via npm/winget/official *.ps1 installers, calls bootstrap.ps1
+dojo                  # day-to-day command: `dojo update` / `dojo install` / `dojo status` / `dojo doctor` / `dojo tokens` (symlinked onto PATH by bootstrap.sh; shimmed via git-bash on Windows)
 dojo-tokens.py        # reads token-optimizer's live state (SQLite + Claude JSON) — used by `dojo tokens` and the PS1 hook
 ```
 
