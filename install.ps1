@@ -53,7 +53,14 @@ foreach ($p in @($LocalBin, $OpencodeBin, (Join-Path $NpmGlobal "bin"))) {
 # ---------------------------------------------------------------------------
 $GitAuthOk = $false
 if (Get-Command ssh -ErrorAction SilentlyContinue) {
-  $sshOut = (ssh -o BatchMode=yes -o ConnectTimeout=5 -T git@github.com 2>&1 | Out-String)
+  # ConnectTimeout is ssh's own -- doesn't cover every way this can hang
+  # (a restrictive firewall black-holing the connection, a console quirk
+  # under non-interactive invocation, etc.), so this is wrapped in a real
+  # job timeout too: this check must never be able to block the rest of
+  # the script indefinitely.
+  $job = Start-Job -ScriptBlock { ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -T git@github.com 2>&1 }
+  $sshOut = if (Wait-Job $job -Timeout 10) { Receive-Job $job | Out-String } else { "" }
+  Remove-Job $job -Force -ErrorAction SilentlyContinue
   if ($sshOut -match "successfully authenticated") { $GitAuthOk = $true; Log "GitHub SSH auth OK" }
 }
 if ((-not $GitAuthOk) -and (Get-Command gh -ErrorAction SilentlyContinue)) {
@@ -127,7 +134,7 @@ if ((Want "claude") -or (Want "copilot") -or (Want "codex") -or (Want "gemini"))
   if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
     Log "npm not found -- installing Node.js LTS via winget"
     if (Get-Command winget -ErrorAction SilentlyContinue) {
-      winget install --id OpenJS.NodeJS.LTS -e --accept-source-agreements --accept-package-agreements | Out-Null
+      winget install --id OpenJS.NodeJS.LTS -e --accept-source-agreements --accept-package-agreements --disable-interactivity | Out-Null
       $env:PATH = [Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [Environment]::GetEnvironmentVariable("PATH", "User")
       if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { Warn "npm still missing after Node.js install -- claude/copilot/codex/gemini installs below will fail" }
     } else {
@@ -245,7 +252,7 @@ if (Want "cursor") {
   if (-not (Get-Command cursor -ErrorAction SilentlyContinue)) {
     Log "installing Cursor (IDE)"
     if (Get-Command winget -ErrorAction SilentlyContinue) {
-      winget install --id=Anysphere.Cursor -e --accept-source-agreements --accept-package-agreements
+      winget install --id=Anysphere.Cursor -e --accept-source-agreements --accept-package-agreements --disable-interactivity
       if ($LASTEXITCODE -ne 0) { Warn "cursor install failed" }
     } else {
       Warn "cursor needs winget (App Installer, ships with Windows 10 1709+/11) -- see https://cursor.com/downloads"
