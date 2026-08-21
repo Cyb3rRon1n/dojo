@@ -241,7 +241,12 @@ if (Want "openclaw") {
   if (-not (Get-Command openclaw -ErrorAction SilentlyContinue)) {
     Log "installing OpenClaw"
     try {
-      Invoke-Expression (Invoke-RestMethod -Uri "https://openclaw.ai/install.ps1")
+      # -NoOnboard, matching install.sh's --no-onboard: without it the
+      # installer launches an interactive onboarding wizard that can't
+      # run headlessly (confirmed live -- it fails outright with no TTY).
+      # Invoke-Expression alone can't pass switches to the downloaded
+      # script; scriptblock creation can.
+      & ([scriptblock]::Create((Invoke-RestMethod -Uri "https://openclaw.ai/install.ps1"))) -NoOnboard
     } catch { Warn "openclaw install failed: $($_.Exception.Message)" }
   } else {
     Log "openclaw already installed"
