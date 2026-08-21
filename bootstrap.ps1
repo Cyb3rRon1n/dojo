@@ -39,7 +39,7 @@ function Warn($msg) { Write-Host "[dojo][warn] $msg" -ForegroundColor Yellow }
 # Progress: "[dojo] (n/N) step description... ok/skip/FAILED" -- one line per
 # step, matching bootstrap.sh's format.
 # ---------------------------------------------------------------------------
-$TotalSteps = 20
+$TotalSteps = 22
 $script:StepN = 0
 function Step($desc) {
   $script:StepN++
@@ -165,6 +165,47 @@ if ($GitBash) {
 } else {
   Write-Host "skip (no git-bash found)"
   Warn "install Git for Windows (https://git-scm.com/download/win) to get the dojo CLI and the live token-usage prompt -- everything else in this script still works without it"
+}
+
+# ---------------------------------------------------------------------------
+# 0a2. python3 shim -- dojo (the bash CLI, via the git-bash shim above)
+#      hardcodes `python3`, but Windows Python installers only ever provide
+#      python.exe, never a python3 alias. Get-Command alone can't detect
+#      this either way -- Windows ships fake "app execution alias" stubs
+#      for both names that report as present even with nothing real
+#      installed (confirmed live: a real python.exe on PATH does NOT mean
+#      python3 does too, they're two separate stubs).
+# ---------------------------------------------------------------------------
+Step "python3 shim (for the dojo CLI)"
+function Test-RealPython($cmd) {
+  if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) { return $false }
+  $out = (& $cmd --version 2>&1 | Out-String)
+  return ($LASTEXITCODE -eq 0) -and ($out -match "Python \d")
+}
+if (Test-RealPython "python3") {
+  Write-Host "skip (python3 already resolves)"
+} elseif (Test-RealPython "python") {
+  # git-bash (MSYS) does its own PATH resolution, not Windows'
+  # PATHEXT-based one -- it auto-appends .exe to a bare name but does NOT
+  # look for a .cmd/.bat shim the way cmd.exe/PowerShell do (confirmed
+  # live: a python3.cmd shim was invisible to `python3` calls from inside
+  # bash even though it worked fine called directly from PowerShell). A
+  # real python3.exe is required; a hardlink gets one for free, same
+  # bytes on disk, no symlink/Developer Mode permission issues since
+  # hardlinks don't need either on NTFS.
+  $pythonExe = (Get-Command python).Source
+  $python3Path = Join-Path $LocalBin "python3.exe"
+  if (Test-Path $python3Path) { Remove-Item $python3Path -Force }
+  try {
+    New-Item -ItemType HardLink -Path $python3Path -Target $pythonExe -ErrorAction Stop | Out-Null
+    Write-Host "ok (hardlinked to $pythonExe)"
+  } catch {
+    Copy-Item $pythonExe $python3Path -Force
+    Write-Host "ok (copied from $pythonExe -- different volume, hardlink unavailable)"
+  }
+} else {
+  Write-Host "skip (no real python found)"
+  Warn "dojo tokens (the live token-usage prompt segment) needs python -- install via install.ps1, or: winget install Python.Python.3.13"
 }
 
 # ---------------------------------------------------------------------------

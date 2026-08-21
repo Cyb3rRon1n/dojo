@@ -272,6 +272,33 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
   Log "uv already installed"
 }
 
+# python3 -- linux/mac never need this step (ships by default on virtually
+# every distro); Windows doesn't ship one. dojo-tokens.py (the live
+# token-usage prompt segment behind `dojo tokens`) needs a real python3.
+# Get-Command alone isn't enough to detect this: Windows ships fake
+# "app execution alias" stubs for both python.exe and python3.exe that
+# Get-Command happily reports as present even when nothing real is
+# installed -- actually invoking one is the only way to tell the
+# difference (confirmed live: a real python.exe existing on PATH does NOT
+# mean python3 does too, they're two separate stubs).
+function Test-RealPython($cmd) {
+  if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) { return $false }
+  $out = (& $cmd --version 2>&1 | Out-String)
+  return ($LASTEXITCODE -eq 0) -and ($out -match "Python \d")
+}
+if (-not ((Test-RealPython "python3") -or (Test-RealPython "python"))) {
+  Log "installing Python (needed for dojo tokens / the prompt hook)"
+  if (Get-Command winget -ErrorAction SilentlyContinue) {
+    winget install --id Python.Python.3.13 -e --accept-source-agreements --accept-package-agreements --disable-interactivity | Out-Null
+    $env:PATH = [Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [Environment]::GetEnvironmentVariable("PATH", "User")
+    if (-not (Test-RealPython "python")) { Warn "python still missing after install -- dojo tokens will be silently unavailable in the prompt" }
+  } else {
+    Warn "python missing and winget unavailable -- install manually from https://python.org, or dojo tokens stays silently unavailable in the prompt"
+  }
+} else {
+  Log "python already installed"
+}
+
 # ---------------------------------------------------------------------------
 # 2. dojo checkout
 # ---------------------------------------------------------------------------
