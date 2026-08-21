@@ -30,6 +30,7 @@ $ConfigHome  = if ($env:XDG_CONFIG_HOME) { $env:XDG_CONFIG_HOME } else { Join-Pa
 $ClaudeHome  = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $HOME ".claude" }
 $DojoDir     = $PSScriptRoot
 
+New-Item -ItemType Directory -Path $LocalBin -Force | Out-Null
 if ($env:PATH -notlike "*$LocalBin*") { $env:PATH = "$LocalBin;$env:PATH" }
 
 function Warn($msg) { Write-Host "[dojo][warn] $msg" -ForegroundColor Yellow }
