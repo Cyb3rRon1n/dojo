@@ -3,6 +3,9 @@
 - **graphify** (`~/.claude/skills/graphify/SKILL.md`) - any input to knowledge graph. Trigger: `/graphify`
 When the user types `/graphify`, use the installed graphify skill or instructions before doing anything else.
 
+# task-observer
+- **task-observer** (`~/.claude/skills/task-observer/SKILL.md`, a.k.a. "One Skill to Rule Them All") - watches substantive multi-step work sessions (tool use producing real deliverables, not one-off questions) for corrections, workflow patterns, and gaps worth turning into new/improved skills, and logs structured observations for later review. Invoke it at the start of that kind of session, per its own description - description-only matching isn't reliable enough on its own (see the skill's own "Recommended Activation Setup"). Also trigger on "any observations logged?" or explicit mentions of skill observations/improvements/the observation log.
+
 # Cross-machine setup
 - This stack is versioned in `~/dojo` (github.com/Cyb3rRon1n/dojo, public).
 - After any `git -C ~/dojo pull`, re-run `~/dojo/bootstrap.sh` (idempotent) to pick up plugin pins, the RTK hook, and graphify. Restart opencode + Claude Code after.

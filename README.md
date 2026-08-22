@@ -77,6 +77,16 @@ Claude Code's statusLine slot, auto-filled by token-optimizer) — is wired up
 too. Cursor has no plugin API or statusline, so it's install-only, honestly
 noted.
 
+### Claude Code-only additions
+
+Not token/context optimizations, so kept out of the table above — a coding
+methodology library and a meta-skill for growing your own skill set:
+
+| Plugin | What it does |
+|---|---|
+| [superpowers](https://github.com/obra/superpowers) | Skills library for TDD, systematic debugging, and collaboration patterns |
+| [task-observer](https://github.com/rebelytics/one-skill-to-rule-them-all) | Watches sessions for corrections/gaps and logs skill-improvement candidates for review — vendored under `claude/skills/task-observer/` (see that dir's `UPSTREAM.md`), since upstream ships as a plain skill bundle with no plugin-marketplace manifest |
+
 ## Commands
 
 Once installed, a `dojo` command is on your `PATH`:

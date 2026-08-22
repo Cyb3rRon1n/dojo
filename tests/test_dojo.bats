@@ -82,6 +82,7 @@ JSON
   run bash "$DOJO_DIR/dojo" doctor
   echo "$output" | grep -q 'CLAUDE.md linked to dojo'
   echo "$output" | grep -q 'RTK.md linked to dojo'
+  echo "$output" | grep -q 'task-observer skill linked to dojo'
 }
 
 @test "doctor: tool under ~/.local/bin found without being on PATH" {

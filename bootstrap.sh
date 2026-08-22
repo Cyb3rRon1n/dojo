@@ -234,6 +234,13 @@ step "Claude Code user config"
 mkdir -p "$CLAUDE_HOME"
 link_file "$DOJO_DIR/claude/CLAUDE.md" "$CLAUDE_HOME/CLAUDE.md"
 link_file "$DOJO_DIR/claude/RTK.md" "$CLAUDE_HOME/RTK.md"
+# task-observer ("One Skill to Rule Them All") has no plugin-marketplace
+# manifest upstream (no .claude-plugin/marketplace.json) - it's a plain
+# skill bundle (SKILL.md + references/), so it's vendored under
+# claude/skills/ (see that dir's UPSTREAM.md) and symlinked in directly,
+# the same link_file mechanism CLAUDE.md/RTK.md already use above, rather
+# than forced through claude plugin marketplace add for no reason.
+link_file "$DOJO_DIR/claude/skills/task-observer" "$CLAUDE_HOME/skills/task-observer"
 echo "ok"
 
 # ---------------------------------------------------------------------------
@@ -243,6 +250,7 @@ if command -v claude >/dev/null 2>&1; then
   run_step "Claude Code plugin marketplaces" bash -c '
     claude plugin marketplace add alexgreensh/token-optimizer
     claude plugin marketplace add DietrichGebert/ponytail
+    claude plugin marketplace add obra/superpowers
   ' || warn "plugin marketplace registration failed"
 
   # -y/--yes was added to `claude plugin install` in a later CLI release -
@@ -255,9 +263,15 @@ if command -v claude >/dev/null 2>&1; then
     CLAUDE_INSTALL_YES_FLAG="-y"
   fi
 
+  # superpowers@superpowers-dev - the marketplace name comes from that
+  # repo's own .claude-plugin/marketplace.json "name" field ("superpowers-dev"),
+  # not derived from the obra/superpowers owner/repo string above, matching
+  # how token-optimizer/ponytail's own marketplace names already don't
+  # match their `add` argument 1:1 either.
   run_step "Claude Code plugins" bash -c "
     claude plugin install token-optimizer@alexgreensh-token-optimizer $CLAUDE_INSTALL_YES_FLAG
     claude plugin install ponytail@ponytail $CLAUDE_INSTALL_YES_FLAG
+    claude plugin install superpowers@superpowers-dev $CLAUDE_INSTALL_YES_FLAG
   " || warn "plugin install failed"
 
   if command -v rtk >/dev/null 2>&1; then
@@ -400,7 +414,8 @@ fi
 # ---------------------------------------------------------------------------
 echo "[dojo] verification"
 echo "  plugins (opencode):   $(command -v opencode >/dev/null && echo installed || echo MISSING)"
-echo "  plugins (claude):     $(command -v claude >/dev/null && claude plugin list 2>/dev/null | grep -ciE 'ponytail|token-optimizer' || echo 0) of 2"
+echo "  plugins (claude):     $(command -v claude >/dev/null && claude plugin list 2>/dev/null | grep -ciE 'ponytail|token-optimizer|superpowers' || echo 0) of 3"
+echo "  task-observer:        $([ -e "$CLAUDE_HOME/skills/task-observer/SKILL.md" ] && echo installed || echo MISSING)"
 echo "  copilot:              $(command -v copilot >/dev/null && echo installed || echo MISSING)"
 echo "  codex:                $(command -v codex >/dev/null && echo installed || echo MISSING)"
 echo "  aider:                $(command -v aider >/dev/null && echo installed || echo MISSING)"
