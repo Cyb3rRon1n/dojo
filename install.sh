@@ -41,7 +41,7 @@ export PATH="$LOCAL_BIN:$OPENCODE_BIN:$NPM_GLOBAL/bin:$PATH"
 #    you.
 # ---------------------------------------------------------------------------
 GIT_AUTH_OK=0
-if command -v ssh >/dev/null 2>&1 && ssh -o BatchMode=yes -o ConnectTimeout=5 -T git@github.com 2>&1 | grep -q "successfully authenticated"; then
+if command -v ssh >/dev/null 2>&1 && ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -T git@github.com 2>&1 | grep -q "successfully authenticated"; then
   GIT_AUTH_OK=1
   log "GitHub SSH auth OK"
 elif command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
