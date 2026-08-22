@@ -20,6 +20,31 @@ EOF
   exit 1
 }
 
+# Tool lookup that survives non-login shells: cron/CI/hook contexts don't get
+# the profile block's PATH additions, so a perfectly-wired ~/.local/bin tool
+# (graphify via uv, for one) would false-negative as MISSING/BROKEN. Login
+# shells see these dirs via the dojo profile block; check them as fallback.
+find_tool() {
+  local p
+  if p="$(command -v "$1" 2>/dev/null)"; then
+    echo "$p"
+    return 0
+  fi
+  for p in "$HOME/.local/bin/$1" "$HOME/bin/$1" "/usr/local/bin/$1" "/usr/local/sbin/$1"; do
+    [[ -x "$p" ]] && { echo "$p"; return 0; }
+  done
+  return 1
+}
+
+ver_of() {
+  local p v
+  if p="$(find_tool "$1")" && v="$("$p" --version 2>/dev/null | head -1)" && [[ -n "$v" ]]; then
+    echo "$v"
+  else
+    echo MISSING
+  fi
+}
+
 git_auth_status() {
   if command -v ssh >/dev/null 2>&1 && ssh -o BatchMode=yes -o ConnectTimeout=5 -T git@github.com 2>&1 | grep -q "successfully authenticated"; then
     echo "GitHub SSH OK"
@@ -40,14 +65,14 @@ cmd_status() {
   else
     echo "           $behind commit(s) behind — run 'dojo update'"
   fi
-  echo "opencode:  $(command -v opencode >/dev/null 2>&1 && opencode --version || echo MISSING)"
-  echo "claude:    $(command -v claude >/dev/null 2>&1 && claude --version || echo MISSING)"
-  echo "copilot:   $(command -v copilot >/dev/null 2>&1 && copilot --version 2>/dev/null || echo MISSING)"
-  echo "codex:     $(command -v codex >/dev/null 2>&1 && codex --version 2>/dev/null || echo MISSING)"
-  echo "aider:     $(command -v aider >/dev/null 2>&1 && aider --version 2>/dev/null || echo MISSING)"
-  echo "plugins:   $(command -v claude >/dev/null 2>&1 && claude plugin list 2>/dev/null | grep -ciE 'ponytail|token-optimizer' || echo 0) of 2 (claude)"
-  echo "rtk:       $(command -v rtk >/dev/null 2>&1 && rtk --version | head -1 || echo MISSING)"
-  echo "graphify:  $(command -v graphify >/dev/null 2>&1 && graphify --version | head -1 || echo MISSING)"
+  echo "opencode:  $(ver_of opencode)"
+  echo "claude:    $(ver_of claude)"
+  echo "copilot:   $(ver_of copilot)"
+  echo "codex:     $(ver_of codex)"
+  echo "aider:     $(ver_of aider)"
+  echo "plugins:   $(p="$(find_tool claude)" && "$p" plugin list 2>/dev/null | grep -ciE 'ponytail|token-optimizer' || echo 0) of 2 (claude)"
+  echo "rtk:       $(ver_of rtk)"
+  echo "graphify:  $(ver_of graphify)"
   echo "auth:      $(git_auth_status)"
 }
 
@@ -73,10 +98,10 @@ cmd_doctor() {
   fi
 
   echo "  tools:"
-  local t v
+  local t v p
   for t in opencode claude rtk graphify; do
-    if command -v "$t" >/dev/null 2>&1; then
-      v="$($t --version 2>/dev/null | head -1)"
+    if p="$(find_tool "$t")"; then
+      v="$("$p" --version 2>/dev/null | head -1)"
       ok "$t ($v)"
     else
       bad "$t not on PATH"
@@ -132,8 +157,8 @@ PY
     bad "RTK hook missing from settings.json — run 'dojo update'"
   fi
   local cp=0
-  if command -v claude >/dev/null 2>&1; then
-    cp="$(claude plugin list 2>/dev/null | grep -ciE 'ponytail|token-optimizer' || true)"
+  if p="$(find_tool claude)"; then
+    cp="$("$p" plugin list 2>/dev/null | grep -ciE 'ponytail|token-optimizer' || true)"
   fi
   if [[ "$cp" -ge 2 ]]; then
     ok "plugins enabled ($cp/2)"
@@ -159,6 +184,54 @@ PY
     *) bad "settings.json unreadable" ;;
   esac
 
+  echo "  claude docs:"
+  local f
+  for f in CLAUDE.md RTK.md; do
+    if [[ "$(readlink -f "$HOME/.claude/$f" 2>/dev/null)" == "$DOJO_DIR/claude/$f" ]]; then
+      ok "$f linked to dojo"
+    else
+      bad "$f not linked to dojo — run 'dojo update'"
+    fi
+  done
+
+  if command -v copilot >/dev/null 2>&1; then
+    echo "  copilot:"
+    if [[ "$(readlink -f "$HOME/.copilot/statusline.sh" 2>/dev/null)" == "$DOJO_DIR/copilot/statusline.sh" ]]; then
+      ok "statusline.sh linked to dojo"
+    else
+      bad "statusline.sh not linked to dojo — run 'dojo update'"
+    fi
+    local csl
+    csl="$(python3 -c "import json,sys;d=json.load(open(sys.argv[1]));print('ok' if d.get('statusLine',{}).get('command') else 'none')" \
+      "$HOME/.copilot/settings.json" 2>/dev/null || echo unreadable)"
+    case "$csl" in
+      ok) ok "statusLine set in ~/.copilot/settings.json" ;;
+      none | unreadable) bad "statusLine missing from ~/.copilot/settings.json — run 'dojo update'" ;;
+    esac
+  fi
+
+  if command -v codex >/dev/null 2>&1; then
+    echo "  codex:"
+    if grep -qs 'status_line' "$HOME/.codex/config.toml"; then
+      ok "status_line in ~/.codex/config.toml"
+    else
+      # bootstrap skips this when the user manages [tui] themselves, so
+      # 'dojo update' would not fix it — a note, not a failure.
+      echo "  note  status_line absent from ~/.codex/config.toml — add manually or run 'dojo update'"
+    fi
+  fi
+
+  if command -v aider >/dev/null 2>&1; then
+    echo "  aider:"
+    if [[ "$(readlink -f "$HOME/.aider.conf.yml" 2>/dev/null)" == "$DOJO_DIR/aider/aider.conf.yml" ]]; then
+      ok "aider.conf.yml linked to dojo"
+    else
+      bad "aider.conf.yml not linked to dojo — run 'dojo update'"
+    fi
+  fi
+
+  echo "  github auth: $(git_auth_status)"
+
   if [[ "$fail" -eq 0 ]]; then
     echo "  all checks passed."
   else
@@ -183,6 +256,7 @@ case "$cmd" in
     cmd_doctor
     ;;
   tokens)
+    shift
     exec python3 "$DOJO_DIR/dojo-tokens.py" "$@"
     ;;
   *)

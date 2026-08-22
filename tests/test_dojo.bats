@@ -74,6 +74,23 @@ JSON
   "$DOJO_DIR/dojo" status >/dev/null 2>&1
 }
 
+@test "doctor: claude doc links wired by bootstrap verify ok" {
+  export CLAUDE_CONFIG_DIR="$TMP_HOME/.claude"
+  mkdir -p "$CLAUDE_CONFIG_DIR"
+  "$DOJO_DIR/bootstrap.sh" >/dev/null 2>&1 || true
+  run bash "$DOJO_DIR/dojo" doctor
+  echo "$output" | grep -q 'CLAUDE.md linked to dojo'
+  echo "$output" | grep -q 'RTK.md linked to dojo'
+}
+
+@test "doctor: tool under ~/.local/bin found without being on PATH" {
+  mkdir -p "$TMP_HOME/.local/bin"
+  printf '#!/bin/sh\necho "graphify 9.9.9"\n' > "$TMP_HOME/.local/bin/graphify"
+  chmod +x "$TMP_HOME/.local/bin/graphify"
+  run env PATH="/usr/bin:/bin" HOME="$TMP_HOME" bash "$DOJO_DIR/dojo" doctor
+  echo "$output" | grep -q 'graphify (graphify 9.9.9)'
+}
+
 @test "opencode pins: ponytail renamed, no legacy name" {
   grep -q '@dietrichgebert/ponytail' "$DOJO_DIR/opencode/opencode.jsonc"
   ! grep -q 'opencode-ponytail' "$DOJO_DIR/opencode/opencode.jsonc"
