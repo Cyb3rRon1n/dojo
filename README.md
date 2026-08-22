@@ -112,7 +112,11 @@ dojo-managed block — so `opencode`, `claude`, `rtk`, `graphify`, and `nvm` are
 on `PATH` after a fresh login, and every interactive prompt appends a live
 token status line (usage / refresh / fill %) whenever token data exists. The
 block is rewritten from the installed dojo version on every `dojo update`;
-don't hand-edit it.
+don't hand-edit it. The same block also sources a shared ssh-agent helper
+(`ssh-agent.sh`, linked to `~/.local/bin/dojo-ssh-agent.sh`), so every shell —
+and tools launched from them — see your GitHub key through one stable agent
+socket. (Windows instead uses the built-in ssh-agent service, configured by
+`bootstrap.ps1`.)
 
 <details>
 <summary><b>Prefer manual setup?</b></summary>
@@ -176,6 +180,8 @@ opencode/
   opencode.jsonc     # pinned plugin list (symlinked into ~/.config/opencode/)
   package.json       # pinned npm deps (copied; npm install fills node_modules)
   package-lock.json
+  plugins/
+    token-gauge.js   # local fallback plugin, linked when npm can't install the pinned ones
 claude/
   CLAUDE.md          # user instructions (symlinked into ~/.claude/)
   RTK.md             # RTK reference (symlinked into ~/.claude/)
@@ -195,6 +201,7 @@ install.sh            # one-shot fresh-machine build-out (installs all 8 tools, 
 install.ps1           # same, native Windows port -- installs via npm/winget/official *.ps1 installers, calls bootstrap.ps1
 dojo                  # day-to-day command: `dojo update` / `dojo install` / `dojo status` / `dojo doctor` / `dojo tokens` (symlinked onto PATH by bootstrap.sh; shimmed via git-bash on Windows)
 dojo-tokens.py        # reads token-optimizer's live state (SQLite + Claude JSON) — used by `dojo tokens` and the PS1 hook
+ssh-agent.sh          # shared ssh-agent helper, sourced by the profile block (linked to ~/.local/bin/dojo-ssh-agent.sh)
 ```
 
 </details>
