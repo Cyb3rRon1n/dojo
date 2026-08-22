@@ -68,6 +68,7 @@ JSON
   count="$(grep -c '# >>> dojo >>>' "$TMP_HOME/.bashrc" || true)"
   [ "$count" -eq 1 ]
   grep -q '__dojo_ps1_tokens' "$TMP_HOME/.bashrc"
+  grep -q 'dojo-ssh-agent.sh' "$TMP_HOME/.bashrc"
 }
 
 @test "dojo: status runs clean" {

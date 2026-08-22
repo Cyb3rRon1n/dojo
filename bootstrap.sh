@@ -144,6 +144,8 @@ fi
 step "dojo command (update/status/install/doctor)"
 mkdir -p "$LOCAL_BIN"
 ln -sf "$DOJO_DIR/dojo" "$LOCAL_BIN/dojo"
+# Also used by the profile block below (shared ssh-agent for every shell).
+ln -sf "$DOJO_DIR/ssh-agent.sh" "$LOCAL_BIN/dojo-ssh-agent.sh"
 echo "ok"
 
 # ---------------------------------------------------------------------------
@@ -161,6 +163,11 @@ $PROFILE_MARKER
 # Managed by dojo (bootstrap.sh) — do not edit by hand.
 export PATH="\$HOME/.local/bin:\$HOME/.opencode/bin:\$HOME/.npm-global/bin:\$PATH"
 [ -s "\$HOME/.nvm/nvm.sh" ] && . "\$HOME/.nvm/nvm.sh"
+
+# Shared ssh-agent (stable socket) so every shell — and tools launched from
+# them, like opencode/claude git pushes — sees the GitHub key. No-op when
+# the agent is already running with a key loaded.
+[ -f "\$HOME/.local/bin/dojo-ssh-agent.sh" ] && . "\$HOME/.local/bin/dojo-ssh-agent.sh"
 
 # Token status in the prompt: live usage / cache refresh / context-fill
 # threshold from token-optimizer's state, via 'dojo tokens --one-line'.
@@ -213,7 +220,11 @@ if command -v npm >/dev/null 2>&1; then
   run_step "opencode plugin dependencies" bash -c "cd '$OCONF' && npm install --legacy-peer-deps" \
     || warn "opencode plugin install failed"
 else
-  skip_step "opencode plugin dependencies" "npm missing — opencode installs them at first launch"
+  skip_step "opencode plugin dependencies" "npm missing"
+  # Local fallback plugin: the TUI still gets live per-session token usage
+  # (and rate-limit detection) without npm-installed opencode-token-usage.
+  mkdir -p "$OCONF/plugins"
+  ln -sf "$DOJO_DIR/opencode/plugins/token-gauge.js" "$OCONF/plugins/token-gauge.js"
 fi
 
 # ---------------------------------------------------------------------------
