@@ -129,6 +129,10 @@ if (Get-Command rtk -ErrorAction SilentlyContinue) {
     $exe = Get-ChildItem -Path $extractDir -Filter "rtk.exe" -Recurse | Select-Object -First 1
     if (-not $exe) { throw "rtk.exe not found in $($asset.name)" }
     Copy-Item $exe.FullName (Join-Path $LocalBin "rtk.exe") -Force
+    # No Linux/Mac-style /usr/local/bin mirror here: on Windows the User PATH
+    # entry below (section 0b) persists for every process launched after this,
+    # and hook subprocesses inherit their parent's environment instead of
+    # re-reading profile files -- the failure mode that mirror fixes doesn't exist.
     Remove-Item $tmpDir -Recurse -Force
   })) { Warn "rtk install failed -- see https://github.com/rtk-ai/rtk/releases" }
 }
