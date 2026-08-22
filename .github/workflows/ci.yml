@@ -25,3 +25,21 @@ jobs:
         run: sudo apt-get install -y shellcheck
       - name: Shellcheck scripts
         run: shellcheck -S warning dojo bootstrap.sh install.sh copilot/statusline.sh
+      - name: Syntax-check PowerShell ports
+        run: |
+          pwsh -NoProfile -Command '
+            $bad = 0
+            foreach ($f in @("bootstrap.ps1", "install.ps1", "copilot/statusline.ps1")) {
+              $tokens = $null; $errors = $null
+              [System.Management.Automation.Language.Parser]::ParseFile(
+                (Join-Path (Get-Location) $f), [ref]$tokens, [ref]$errors) | Out-Null
+              if ($errors.Count) {
+                $bad = 1
+                $errors | ForEach-Object {
+                  Write-Host ("{0}:{1}: {2}" -f $f, $_.Extent.StartLineNumber, $_.Message)
+                }
+              }
+            }
+            if ($bad) { exit 1 }
+            Write-Host "ps1 parse ok"
+          '
