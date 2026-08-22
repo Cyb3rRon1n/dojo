@@ -84,7 +84,14 @@ function Link-File($Src, $Dst) {
   try {
     New-Item -ItemType SymbolicLink -Path $Dst -Target $Src -Force -ErrorAction Stop | Out-Null
   } catch {
-    Copy-Item $Src $Dst -Force
+    # -Recurse only matters for a directory source (e.g. the task-observer
+    # skill folder below) - a no-op flag for the plain-file case every
+    # other Link-File call here still uses.
+    if (Test-Path $Src -PathType Container) {
+      Copy-Item $Src $Dst -Recurse -Force
+    } else {
+      Copy-Item $Src $Dst -Force
+    }
     Warn "symlink failed for $Dst (enable Developer Mode: Settings > Update & Security > For developers, or run as Administrator) -- copied instead; re-run bootstrap.ps1 after a dojo update to refresh"
   }
 }
@@ -288,6 +295,10 @@ Step "Claude Code user config"
 New-Item -ItemType Directory -Path $ClaudeHome -Force | Out-Null
 Link-File (Join-Path $DojoDir "claude\CLAUDE.md") (Join-Path $ClaudeHome "CLAUDE.md")
 Link-File (Join-Path $DojoDir "claude\RTK.md") (Join-Path $ClaudeHome "RTK.md")
+# task-observer has no plugin-marketplace manifest upstream, so it's
+# vendored under claude\skills\ (see that dir's UPSTREAM.md) and linked
+# directly, same as bootstrap.sh.
+Link-File (Join-Path $DojoDir "claude\skills\task-observer") (Join-Path $ClaudeHome "skills\task-observer")
 Write-Host "ok"
 
 # ---------------------------------------------------------------------------
@@ -297,6 +308,7 @@ if (Get-Command claude -ErrorAction SilentlyContinue) {
   if (-not (RunStep "Claude Code plugin marketplaces" {
     claude plugin marketplace add alexgreensh/token-optimizer
     claude plugin marketplace add DietrichGebert/ponytail
+    claude plugin marketplace add obra/superpowers
   })) { Warn "plugin marketplace registration failed" }
 
   # Same reasoning as bootstrap.sh: detect -y/--yes support instead of
@@ -309,9 +321,11 @@ if (Get-Command claude -ErrorAction SilentlyContinue) {
     if ($ClaudeInstallYesFlag) {
       claude plugin install token-optimizer@alexgreensh-token-optimizer $ClaudeInstallYesFlag
       claude plugin install ponytail@ponytail $ClaudeInstallYesFlag
+      claude plugin install superpowers@superpowers-dev $ClaudeInstallYesFlag
     } else {
       claude plugin install token-optimizer@alexgreensh-token-optimizer
       claude plugin install ponytail@ponytail
+      claude plugin install superpowers@superpowers-dev
     }
   })) { Warn "plugin install failed" }
 
@@ -457,9 +471,11 @@ function Have($cmd) { if (Get-Command $cmd -ErrorAction SilentlyContinue) { "ins
 Write-Host "  plugins (opencode):   $(Have opencode)"
 $claudePluginCount = 0
 if (Get-Command claude -ErrorAction SilentlyContinue) {
-  $claudePluginCount = @(claude plugin list 2>$null | Select-String -Pattern 'ponytail|token-optimizer').Count
+  $claudePluginCount = @(claude plugin list 2>$null | Select-String -Pattern 'ponytail|token-optimizer|superpowers').Count
 }
-Write-Host "  plugins (claude):     $claudePluginCount of 2"
+Write-Host "  plugins (claude):     $claudePluginCount of 3"
+$taskObserverInstalled = Test-Path (Join-Path $ClaudeHome "skills\task-observer\SKILL.md")
+Write-Host "  task-observer:        $(if ($taskObserverInstalled) { 'installed' } else { 'MISSING' })"
 Write-Host "  copilot:              $(Have copilot)"
 Write-Host "  codex:                $(Have codex)"
 Write-Host "  aider:                $(Have aider)"

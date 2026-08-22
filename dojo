@@ -70,7 +70,7 @@ cmd_status() {
   echo "copilot:   $(ver_of copilot)"
   echo "codex:     $(ver_of codex)"
   echo "aider:     $(ver_of aider)"
-  echo "plugins:   $(p="$(find_tool claude)" && "$p" plugin list 2>/dev/null | grep -ciE 'ponytail|token-optimizer' || echo 0) of 2 (claude)"
+  echo "plugins:   $(p="$(find_tool claude)" && "$p" plugin list 2>/dev/null | grep -ciE 'ponytail|token-optimizer|superpowers' || echo 0) of 3 (claude)"
   echo "rtk:       $(ver_of rtk)"
   echo "graphify:  $(ver_of graphify)"
   echo "auth:      $(git_auth_status)"
@@ -158,12 +158,12 @@ PY
   fi
   local cp=0
   if p="$(find_tool claude)"; then
-    cp="$("$p" plugin list 2>/dev/null | grep -ciE 'ponytail|token-optimizer' || true)"
+    cp="$("$p" plugin list 2>/dev/null | grep -ciE 'ponytail|token-optimizer|superpowers' || true)"
   fi
-  if [[ "$cp" -ge 2 ]]; then
-    ok "plugins enabled ($cp/2)"
+  if [[ "$cp" -ge 3 ]]; then
+    ok "plugins enabled ($cp/3)"
   else
-    bad "plugins missing ($cp/2) — run 'dojo update'"
+    bad "plugins missing ($cp/3) — run 'dojo update'"
   fi
 
   echo "  claude statusline:"
@@ -193,6 +193,11 @@ PY
       bad "$f not linked to dojo — run 'dojo update'"
     fi
   done
+  if [[ "$(readlink -f "$HOME/.claude/skills/task-observer" 2>/dev/null)" == "$DOJO_DIR/claude/skills/task-observer" ]]; then
+    ok "task-observer skill linked to dojo"
+  else
+    bad "task-observer skill not linked to dojo — run 'dojo update'"
+  fi
 
   if command -v copilot >/dev/null 2>&1; then
     echo "  copilot:"
