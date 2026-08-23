@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 #
 # dojo tokens — read token-optimizer's live state and print real token usage,
-# cache "refresh", and context-fill threshold status. Powers both `dojo tokens`
-# and the PS1 status line (--one-line). Never errors: no data or a locked db
-# prints nothing.
+# cache "refresh", and context-fill threshold status. --one-line emits a
+# compact single line. Never errors: no data or a locked db prints nothing.
 #
 # Data sources, all read defensively (any may be absent):
 #   * opencode plugin (sqlite):  $TOKEN_OPTIMIZER_DATA_DIR or

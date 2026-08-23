@@ -67,7 +67,7 @@ JSON
   "$DOJO_DIR/bootstrap.sh" >/dev/null 2>&1 || true
   count="$(grep -c '# >>> dojo >>>' "$TMP_HOME/.bashrc" || true)"
   [ "$count" -eq 1 ]
-  grep -q '__dojo_ps1_tokens' "$TMP_HOME/.bashrc"
+  ! grep -q '__dojo_ps1_tokens' "$TMP_HOME/.bashrc"
   grep -q 'dojo-ssh-agent.sh' "$TMP_HOME/.bashrc"
 }
 
