@@ -4,7 +4,7 @@
 
 A training ground for AI coding tools. Clone once, run one command, and
 **opencode**, **Claude Code**, **GitHub Copilot CLI**, **OpenAI Codex CLI**,
-**Aider**, **Gemini CLI**, **OpenClaw**, and **Cursor** are all set up with
+**Aider**, **Google Antigravity CLI**, **OpenClaw**, and **Cursor** are all set up with
 whatever token-saving optimizations each one actually supports — plus your
 GitHub projects, cloned and ready.
 
@@ -50,7 +50,7 @@ is a no-op if already done.
 | [GitHub Copilot CLI](https://www.npmjs.com/package/@github/copilot) | GitHub's terminal coding agent |
 | [OpenAI Codex CLI](https://www.npmjs.com/package/@openai/codex) | OpenAI's terminal coding agent |
 | [Aider](https://aider.chat) | Open-source, git-native AI pair programmer |
-| [Gemini CLI](https://www.npmjs.com/package/@google/gemini-cli) | Google's terminal coding agent |
+| [Antigravity CLI](https://antigravity.google) | Google's terminal coding agent (replaced the retired Gemini CLI, 2026-06) |
 | [OpenClaw](https://openclaw.ai) | Agent runtime with a plugin system |
 | [Cursor](https://cursor.com) | AI IDE (install-only — no plugin API, so no optimizations) |
 
@@ -137,7 +137,7 @@ npm install -g @anthropic-ai/claude-code
 npm install -g @github/copilot
 npm install -g @openai/codex
 curl -fsSL https://aider.chat/install.sh | sh
-npm install -g @google/gemini-cli
+curl -fsSL https://antigravity.google/cli/install.sh | bash
 curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash -s -- --no-onboard
 curl https://cursor.com/install -fsSL | bash
 curl -LsSf https://astral.sh/uv/install.sh | sh

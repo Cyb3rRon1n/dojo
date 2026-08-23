@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 #
 # install.sh — one-shot fresh-machine build-out for the dojo repo: opencode,
-# Claude Code, GitHub Copilot CLI, OpenAI Codex CLI, Aider, Gemini CLI,
-# OpenClaw, and Cursor, each wired up with whatever token-optimization each
+# Claude Code, GitHub Copilot CLI, OpenAI Codex CLI, Aider, Google Antigravity
+# CLI, OpenClaw, and Cursor, each wired up with whatever token-optimization
+# each
 # one supports (RTK hooks, graphify, and — for Claude Code + opencode only,
 # for now — ponytail/token-optimizer) + the projects/github/repos workspace,
 # cloned and submodule-linked.
@@ -72,7 +73,7 @@ fi
 # Piped one-liners with no TTY (rare) default to installing everything, same
 # as before this option existed.
 # ---------------------------------------------------------------------------
-ALL_TOOLS=(opencode claude copilot codex aider gemini openclaw cursor)
+ALL_TOOLS=(opencode claude copilot codex aider agy openclaw cursor)
 if [[ -n "${DOJO_TOOLS:-}" ]]; then
   IFS=',' read -ra SELECTED_TOOLS <<< "$DOJO_TOOLS"
 elif [[ -t 0 ]]; then
@@ -82,7 +83,7 @@ elif [[ -t 0 ]]; then
   echo "  3) copilot  (GitHub Copilot CLI)"
   echo "  4) codex    (OpenAI Codex CLI)"
   echo "  5) aider"
-  echo "  6) gemini   (Google Gemini CLI)"
+  echo "  6) agy      (Google Antigravity CLI)"
   echo "  7) openclaw (agent + plugins, token-optimizer/ponytail)"
   echo "  8) cursor   (IDE — install only, no plugin API)"
   read -rp "Enter numbers/names (space or comma separated), or blank for all: " reply
@@ -98,7 +99,7 @@ elif [[ -t 0 ]]; then
         3|copilot)  SELECTED_TOOLS+=(copilot) ;;
         4|codex)    SELECTED_TOOLS+=(codex) ;;
         5|aider)    SELECTED_TOOLS+=(aider) ;;
-        6|gemini)   SELECTED_TOOLS+=(gemini) ;;
+        6|agy)      SELECTED_TOOLS+=(agy) ;;
         7|openclaw) SELECTED_TOOLS+=(openclaw) ;;
         8|cursor)   SELECTED_TOOLS+=(cursor) ;;
         *) warn "unknown tool selection '$tok' — ignoring" ;;
@@ -111,9 +112,9 @@ fi
 want() { printf '%s\n' "${SELECTED_TOOLS[@]}" | grep -qx "$1"; }
 
 # Node.js/npm aren't preinstalled on every fresh machine (e.g. minimal distro
-# images) — claude/copilot/codex/gemini installs below all need npm. Bootstrap
+# images) — claude/copilot/codex installs below all need npm. Bootstrap
 # it with nvm (user-space, no sudo) if it's missing and one of those was picked.
-if { want claude || want copilot || want codex || want gemini; } && ! command -v npm >/dev/null 2>&1; then
+if { want claude || want copilot || want codex; } && ! command -v npm >/dev/null 2>&1; then
   log "npm not found — installing Node.js via nvm"
   export NVM_DIR="$HOME/.nvm"
   curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash >/dev/null 2>&1 || warn "nvm install failed"
@@ -186,12 +187,14 @@ if want aider; then
   fi
 fi
 
-if want gemini; then
-  if ! command -v gemini >/dev/null 2>&1; then
-    log "installing Google Gemini CLI"
-    npm install -g @google/gemini-cli || warn "gemini install failed"
+# Gemini CLI stopped serving consumer requests on 2026-06-18 (Google moved
+# everyone to Antigravity CLI, a Go binary with its own installer — no npm).
+if want agy; then
+  if ! command -v agy >/dev/null 2>&1; then
+    log "installing Google Antigravity CLI"
+    curl -fsSL https://antigravity.google/cli/install.sh | bash >/dev/null || warn "agy install failed"
   else
-    log "gemini already installed ($(gemini --version 2>/dev/null || echo unknown))"
+    log "agy already installed ($(agy --version 2>/dev/null || echo unknown))"
   fi
 fi
 
@@ -251,7 +254,7 @@ else
 fi
 git -C "$REPOS_DIR" submodule update --init --recursive || warn "submodule update failed"
 
-log "done. Restart opencode / Claude Code / Copilot CLI / Codex CLI / Aider / Gemini / OpenClaw / Cursor — you're ready to launch in any repo."
+log "done. Restart opencode / Claude Code / Copilot CLI / Codex CLI / Aider / Antigravity (agy) / OpenClaw / Cursor — you're ready to launch in any repo."
 if [[ "$GIT_AUTH_OK" -eq 0 ]]; then
   warn "reminder: no GitHub auth was detected, so pushes will fail until you run"
   warn "  ssh-keygen -t ed25519 -C you@example.com  (then add the key on GitHub)"
