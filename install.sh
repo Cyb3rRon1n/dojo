@@ -73,7 +73,7 @@ fi
 # Piped one-liners with no TTY (rare) default to installing everything, same
 # as before this option existed.
 # ---------------------------------------------------------------------------
-ALL_TOOLS=(opencode claude copilot codex aider agy openclaw cursor)
+ALL_TOOLS=(opencode claude copilot codex aider agy openclaw cursor cline qwen goose pi)
 if [[ -n "${DOJO_TOOLS:-}" ]]; then
   IFS=',' read -ra SELECTED_TOOLS <<< "$DOJO_TOOLS"
 elif [[ -t 0 ]]; then
@@ -86,6 +86,10 @@ elif [[ -t 0 ]]; then
   echo "  6) agy      (Google Antigravity CLI)"
   echo "  7) openclaw (agent + plugins, token-optimizer/ponytail)"
   echo "  8) cursor   (IDE — install only, no plugin API)"
+  echo "  9) cline    (Cline CLI — headless agent from the VS Code extension)"
+  echo " 10) qwen     (Qwen Code — Alibaba's agent, free Qwen OAuth tier)"
+  echo " 11) goose    (Block's Goose — MCP-native agent)"
+  echo " 12) pi       (Pi — minimal harness, any provider)"
   read -rp "Enter numbers/names (space or comma separated), or blank for all: " reply
   if [[ -z "$reply" ]]; then
     SELECTED_TOOLS=("${ALL_TOOLS[@]}")
@@ -102,6 +106,10 @@ elif [[ -t 0 ]]; then
         6|agy)      SELECTED_TOOLS+=(agy) ;;
         7|openclaw) SELECTED_TOOLS+=(openclaw) ;;
         8|cursor)   SELECTED_TOOLS+=(cursor) ;;
+        9|cline)    SELECTED_TOOLS+=(cline) ;;
+        10|qwen)    SELECTED_TOOLS+=(qwen) ;;
+        11|goose)   SELECTED_TOOLS+=(goose) ;;
+        12|pi)      SELECTED_TOOLS+=(pi) ;;
         *) warn "unknown tool selection '$tok' — ignoring" ;;
       esac
     done
@@ -114,7 +122,7 @@ want() { printf '%s\n' "${SELECTED_TOOLS[@]}" | grep -qx "$1"; }
 # Node.js/npm aren't preinstalled on every fresh machine (e.g. minimal distro
 # images) — claude/copilot/codex installs below all need npm. Bootstrap
 # it with nvm (user-space, no sudo) if it's missing and one of those was picked.
-if { want claude || want copilot || want codex; } && ! command -v npm >/dev/null 2>&1; then
+if { want claude || want copilot || want codex || want cline || want qwen || want pi; } && ! command -v npm >/dev/null 2>&1; then
   log "npm not found — installing Node.js via nvm"
   export NVM_DIR="$HOME/.nvm"
   curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash >/dev/null 2>&1 || warn "nvm install failed"
@@ -216,6 +224,55 @@ if want cursor; then
   fi
 fi
 
+if want cline; then
+  if ! command -v cline >/dev/null 2>&1; then
+    log "installing Cline CLI"
+    npm install -g cline || warn "cline install failed (needs Node 22+)"
+  else
+    log "cline already installed ($(cline --version 2>/dev/null || echo unknown))"
+  fi
+fi
+
+if want qwen; then
+  if ! command -v qwen >/dev/null 2>&1; then
+    log "installing Qwen Code"
+    npm install -g @qwen-code/qwen-code || warn "qwen install failed"
+  else
+    log "qwen already installed ($(qwen --version 2>/dev/null || echo unknown))"
+  fi
+fi
+
+# Prebuilt tarballs from GitHub releases (93MB) — no brew/apt package and the
+# binary is self-contained, so just extract it onto ~/.local/bin.
+if want goose; then
+  if ! command -v goose >/dev/null 2>&1; then
+    log "installing Goose (Block)"
+    case "$(uname -m)" in
+      x86_64)        GOOSE_ARCH=x86_64-unknown-linux-gnu ;;
+      aarch64|arm64) GOOSE_ARCH=aarch64-unknown-linux-gnu ;;
+      *)             GOOSE_ARCH="" ;;
+    esac
+    if [[ -z "$GOOSE_ARCH" ]]; then
+      warn "goose: no prebuilt binary for $(uname -m) — skipped"
+    else
+      mkdir -p "$LOCAL_BIN"
+      curl -fsSL "https://github.com/block/goose/releases/latest/download/goose-${GOOSE_ARCH}.tar.gz" | tar -xz -C "$LOCAL_BIN" --strip-components=1 goose \
+        || warn "goose install failed"
+    fi
+  else
+    log "goose already installed ($(goose --version 2>/dev/null || echo unknown))"
+  fi
+fi
+
+if want pi; then
+  if ! command -v pi >/dev/null 2>&1; then
+    log "installing Pi coding agent"
+    npm install -g @earendil-works/pi-coding-agent || warn "pi install failed"
+  else
+    log "pi already installed ($(pi --version 2>/dev/null || echo unknown))"
+  fi
+fi
+
 # uv is the Python tool manager graphify installs through
 if ! command -v uv >/dev/null 2>&1; then
   log "installing uv (needed for graphify)"
@@ -254,7 +311,7 @@ else
 fi
 git -C "$REPOS_DIR" submodule update --init --recursive || warn "submodule update failed"
 
-log "done. Restart opencode / Claude Code / Copilot CLI / Codex CLI / Aider / Antigravity (agy) / OpenClaw / Cursor — you're ready to launch in any repo."
+log "done. Restart opencode / Claude Code / Copilot CLI / Codex CLI / Aider / Antigravity (agy) / OpenClaw / Cursor / Cline / Qwen / Goose / Pi — you're ready to launch in any repo."
 if [[ "$GIT_AUTH_OK" -eq 0 ]]; then
   warn "reminder: no GitHub auth was detected, so pushes will fail until you run"
   warn "  ssh-keygen -t ed25519 -C you@example.com  (then add the key on GitHub)"

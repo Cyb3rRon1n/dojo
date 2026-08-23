@@ -88,7 +88,7 @@ if (-not $GitAuthOk) {
 # runs with no console input default to installing everything, same as
 # install.sh's non-TTY default.
 # ---------------------------------------------------------------------------
-$AllTools = @("opencode", "claude", "copilot", "codex", "aider", "agy", "openclaw", "cursor")
+$AllTools = @("opencode", "claude", "copilot", "codex", "aider", "agy", "openclaw", "cursor", "cline", "qwen", "goose", "pi")
 if ($env:DOJO_TOOLS) {
   $SelectedTools = $env:DOJO_TOOLS -split ',' | ForEach-Object { $_.Trim() }
 } elseif (-not [Console]::IsInputRedirected) {
@@ -101,6 +101,10 @@ if ($env:DOJO_TOOLS) {
   Write-Host "  6) agy      (Google Antigravity CLI)"
   Write-Host "  7) openclaw (agent + plugins, token-optimizer/ponytail)"
   Write-Host "  8) cursor   (IDE -- install only, no plugin API)"
+  Write-Host "  9) cline    (Cline CLI -- headless agent from the VS Code extension)"
+  Write-Host " 10) qwen     (Qwen Code -- Alibaba's agent, free Qwen OAuth tier)"
+  Write-Host " 11) goose    (Block's Goose -- MCP-native agent)"
+  Write-Host " 12) pi       (Pi -- minimal harness, any provider)"
   $reply = Read-Host "Enter numbers/names (space or comma separated), or blank for all"
   if (-not $reply) {
     $SelectedTools = $AllTools
@@ -116,6 +120,10 @@ if ($env:DOJO_TOOLS) {
         { $_ -in "6", "agy" }      { $SelectedTools += "agy" }
         { $_ -in "7", "openclaw" } { $SelectedTools += "openclaw" }
         { $_ -in "8", "cursor" }   { $SelectedTools += "cursor" }
+        { $_ -in "9", "cline" }    { $SelectedTools += "cline" }
+        { $_ -in "10", "qwen" }    { $SelectedTools += "qwen" }
+        { $_ -in "11", "goose" }   { $SelectedTools += "goose" }
+        { $_ -in "12", "pi" }      { $SelectedTools += "pi" }
         default { Warn "unknown tool selection '$tok' -- ignoring" }
       }
     }
@@ -130,7 +138,7 @@ function Want($tool) { $SelectedTools -contains $tool }
 # missing and one of those was picked (simpler than nvm-windows' separate
 # version-management paradigm for the one thing dojo actually needs: npm on
 # PATH).
-if ((Want "claude") -or (Want "copilot") -or (Want "codex")) {
+if ((Want "claude") -or (Want "copilot") -or (Want "codex") -or (Want "cline") -or (Want "qwen") -or (Want "pi")) {
   if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
     Log "npm not found -- installing Node.js LTS via winget"
     if (Get-Command winget -ErrorAction SilentlyContinue) {
@@ -269,6 +277,60 @@ if (Want "cursor") {
   }
 }
 
+if (Want "cline") {
+  if (-not (Get-Command cline -ErrorAction SilentlyContinue)) {
+    Log "installing Cline CLI"
+    npm install -g cline
+    if ($LASTEXITCODE -ne 0) { Warn "cline install failed (needs Node 22+)" }
+  } else {
+    Log "cline already installed"
+  }
+}
+
+if (Want "qwen") {
+  if (-not (Get-Command qwen -ErrorAction SilentlyContinue)) {
+    Log "installing Qwen Code"
+    npm install -g @qwen-code/qwen-code
+    if ($LASTEXITCODE -ne 0) { Warn "qwen install failed" }
+  } else {
+    Log "qwen already installed"
+  }
+}
+
+# Prebuilt zip from GitHub releases (~90MB), self-contained binary into the
+# user-local bin dir that bootstrap.ps1 already puts on the User PATH.
+if (Want "goose") {
+  if (-not (Get-Command goose -ErrorAction SilentlyContinue)) {
+    Log "installing Goose (Block)"
+    $GooseDir = Join-Path $HOME ".local\bin"
+    New-Item -ItemType Directory -Path $GooseDir -Force | Out-Null
+    $GooseZip = Join-Path $env:TEMP "goose.zip"
+    try {
+      Invoke-WebRequest "https://github.com/block/goose/releases/latest/download/goose-x86_64-pc-windows-msvc.zip" -OutFile $GooseZip
+      Expand-Archive $GooseZip -DestinationPath $env:TEMP\goose-extract -Force
+      Copy-Item (Join-Path $env:TEMP\goose-extract "goose.exe") $GooseDir -Force
+      if (-not (Get-Command goose -ErrorAction SilentlyContinue)) { Warn "goose installed to $GooseDir -- open a new shell so it lands on PATH" }
+    } catch {
+      Warn "goose install failed: $($_.Exception.Message)"
+    } finally {
+      Remove-Item $GooseZip -Force -ErrorAction SilentlyContinue
+      Remove-Item $env:TEMP\goose-extract -Recurse -Force -ErrorAction SilentlyContinue
+    }
+  } else {
+    Log "goose already installed"
+  }
+}
+
+if (Want "pi") {
+  if (-not (Get-Command pi -ErrorAction SilentlyContinue)) {
+    Log "installing Pi coding agent"
+    npm install -g @earendil-works/pi-coding-agent
+    if ($LASTEXITCODE -ne 0) { Warn "pi install failed" }
+  } else {
+    Log "pi already installed"
+  }
+}
+
 # uv is the Python tool manager graphify installs through
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
   Log "installing uv (needed for graphify)"
@@ -347,7 +409,7 @@ if (Test-Path (Join-Path $ReposDir ".git")) {
 git -C $ReposDir submodule update --init --recursive
 if ($LASTEXITCODE -ne 0) { Warn "submodule update failed" }
 
-Log "done. Restart opencode / Claude Code / Copilot CLI / Codex CLI / Aider / Antigravity (agy) / OpenClaw / Cursor -- you're ready to launch in any repo."
+Log "done. Restart opencode / Claude Code / Copilot CLI / Codex CLI / Aider / Antigravity (agy) / OpenClaw / Cursor / Cline / Qwen / Goose / Pi -- you're ready to launch in any repo."
 if (-not $GitAuthOk) {
   Warn "reminder: no GitHub auth was detected, so pushes will fail until you run"
   Warn "  ssh-keygen -t ed25519 -C you@example.com   (then add the key on GitHub)"

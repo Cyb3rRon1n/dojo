@@ -53,6 +53,10 @@ is a no-op if already done.
 | [Antigravity CLI](https://antigravity.google) | Google's terminal coding agent (replaced the retired Gemini CLI, 2026-06) |
 | [OpenClaw](https://openclaw.ai) | Agent runtime with a plugin system |
 | [Cursor](https://cursor.com) | AI IDE (install-only — no plugin API, so no optimizations) |
+| [Cline](https://cline.bot) | Headless CLI of the Cline VS Code agent (5M+ installs) |
+| [Qwen Code](https://www.npmjs.com/package/@qwen-code/qwen-code) | Alibaba's terminal agent, free Qwen OAuth tier |
+| [Goose](https://block.github.io/goose) | Block's MCP-native agent, Linux-Foundation governed |
+| [Pi](https://pi.dev) | Minimal coding-agent harness, any provider or local model |
 
 dojo never force-installs a tool you didn't ask for — `bootstrap.sh` only
 configures what's already present on the machine (`install.sh` is the one
