@@ -7,5 +7,9 @@
     "opencode-token-usage": "1.0.0",
     "rtk-for-opencode": "0.1.5",
     "token-optimizer-opencode": "1.1.0"
+  },
+  "allowScripts": {
+    "oh-my-openagent": true,
+    "@code-yeongyu/comment-checker": true
   }
 }
