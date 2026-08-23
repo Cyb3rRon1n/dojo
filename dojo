@@ -15,7 +15,7 @@ usage: dojo <command>
   install  re-run install.sh (one-shot build-out, idempotent — same as fresh machine)
   status   versions, GitHub auth, whether you're behind origin
   doctor   verify every wiring point is intact; exit 1 if anything is broken
-  tokens   live token usage / cache refresh / context-fill thresholds (--one-line for the prompt)
+  tokens   live token usage / cache refresh / context-fill thresholds (--one-line for compact output)
 EOF
   exit 1
 }

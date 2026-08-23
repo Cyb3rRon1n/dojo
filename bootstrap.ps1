@@ -17,8 +17,8 @@
   Known platform gaps vs. bootstrap.sh (not bugs -- real Windows differences):
    - The `dojo` CLI itself (dojo update/status/doctor/tokens) is a bash
      script. This wires a `dojo.cmd` shim through Git for Windows' bash.exe
-     if found; without Git for Windows, the dojo command and the live
-     token-usage prompt hook are unavailable (everything else still works).
+     if found; without Git for Windows, the dojo command is unavailable
+     (everything else still works).
    - Symlinks need either Developer Mode (Settings > For developers) or an
      elevated shell. Falls back to a copy + warning when neither is set up
      -- copies won't pick up a `dojo update` automatically; re-run this
@@ -155,7 +155,7 @@ if (Get-Command graphify -ErrorAction SilentlyContinue) {
 # ---------------------------------------------------------------------------
 # 0a. dojo command (update/status/install/doctor/tokens) -- the CLI itself
 #     is a bash script. Shim it through Git for Windows' bash.exe if found;
-#     this is also what the prompt's live token-usage hook depends on.
+
 # ---------------------------------------------------------------------------
 Step "dojo command (update/status/install/doctor)"
 $GitBashCandidates = @(
@@ -175,7 +175,7 @@ if ($GitBash) {
   Write-Host "ok (via git-bash: $GitBash)"
 } else {
   Write-Host "skip (no git-bash found)"
-  Warn "install Git for Windows (https://git-scm.com/download/win) to get the dojo CLI and the live token-usage prompt -- everything else in this script still works without it"
+  Warn "install Git for Windows (https://git-scm.com/download/win) to get the dojo CLI -- everything else in this script still works without it"
 }
 
 # ---------------------------------------------------------------------------
@@ -216,16 +216,17 @@ if (Test-RealPython "python3") {
   }
 } else {
   Write-Host "skip (no real python found)"
-  Warn "dojo tokens (the live token-usage prompt segment) needs python -- install via install.ps1, or: winget install Python.Python.3.13"
+  Warn "dojo tokens needs python -- install via install.ps1, or: winget install Python.Python.3.13"
 }
 
 # ---------------------------------------------------------------------------
-# 0b. PATH persistence + prompt hook. Windows equivalent of bootstrap.sh's
-#     .bashrc/.zshrc block: a persistent User PATH entry (so any launched
-#     process finds these bins, not just PowerShell) plus a $PROFILE block
-#     for the live token-usage prompt segment.
+# 0b. PATH persistence + legacy prompt-hook removal. Windows equivalent of
+#     bootstrap.sh's .bashrc/.zshrc block: a persistent User PATH entry (so
+#     any launched process finds these bins, not just PowerShell). Also
+#     strips the retired token-usage prompt block older versions wrote to
+#     $PROFILE.
 # ---------------------------------------------------------------------------
-Step "PATH persistence + prompt hook"
+Step "PATH persistence"
 $PathEntries = @("$HOME\.local\bin", "$HOME\.opencode\bin", "$HOME\.npm-global\bin")
 $UserPath = [Environment]::GetEnvironmentVariable("PATH", "User")
 if ($null -eq $UserPath) { $UserPath = "" }
@@ -237,34 +238,14 @@ if ($missing) {
 
 $ProfileMarker = "# >>> dojo >>>"
 $ProfileTail   = "# <<< dojo <<<"
-$ProfileBlock = @"
-$ProfileMarker
-# Managed by dojo (bootstrap.ps1) -- do not edit by hand.
 
-# Token status in the prompt: live usage / cache refresh / context-fill
-# threshold from token-optimizer's state, via 'dojo tokens --one-line'.
-# Renders nothing when there's no token data yet, or when the dojo CLI
-# isn't available (no Git for Windows found at bootstrap time).
-function __dojo_prompt_tokens {
-  if (-not (Get-Command dojo -ErrorAction SilentlyContinue)) { return "" }
-  `$s = (dojo tokens --one-line 2>`$null)
-  if (`$s) { return " `$s" }
-  return ""
+if (Test-Path $PROFILE) {
+  $existingProfile = Get-Content $PROFILE -Raw -ErrorAction SilentlyContinue
+  if ($existingProfile -and $existingProfile.Contains($ProfileMarker)) {
+    $pattern = "(?s)" + [regex]::Escape($ProfileMarker) + ".*?" + [regex]::Escape($ProfileTail)
+    Set-Content -Path $PROFILE -Value ([regex]::Replace($existingProfile, $pattern, "").Trim() + "`n")
+  }
 }
-function prompt {
-  "PS `$(`$executionContext.SessionState.Path.CurrentLocation)`$('>' * (`$nestedPromptLevel + 1)) `$(__dojo_prompt_tokens)"
-}
-$ProfileTail
-"@
-
-if (-not (Test-Path $PROFILE)) { New-Item -ItemType File -Path $PROFILE -Force | Out-Null }
-$existingProfile = Get-Content $PROFILE -Raw -ErrorAction SilentlyContinue
-if (-not $existingProfile) { $existingProfile = "" }
-if ($existingProfile.Contains($ProfileMarker)) {
-  $pattern = "(?s)" + [regex]::Escape($ProfileMarker) + ".*?" + [regex]::Escape($ProfileTail)
-  $existingProfile = [regex]::Replace($existingProfile, $pattern, "").TrimEnd()
-}
-Set-Content -Path $PROFILE -Value (($existingProfile.TrimEnd() + "`n`n" + $ProfileBlock).Trim() + "`n")
 Write-Host "ok"
 
 # ---------------------------------------------------------------------------

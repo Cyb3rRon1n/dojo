@@ -169,18 +169,6 @@ export PATH="\$HOME/.local/bin:\$HOME/.opencode/bin:\$HOME/.npm-global/bin:\$PAT
 # the agent is already running with a key loaded.
 [ -f "\$HOME/.local/bin/dojo-ssh-agent.sh" ] && . "\$HOME/.local/bin/dojo-ssh-agent.sh"
 
-# Token status in the prompt: live usage / cache refresh / context-fill
-# threshold from token-optimizer's state, via 'dojo tokens --one-line'.
-# Renders nothing when there's no token data yet.
-__dojo_ps1_tokens() {
-  command -v dojo >/dev/null 2>&1 || return
-  local s
-  s="\$(dojo tokens --one-line 2>/dev/null)"
-  [[ -n "\$s" ]] && printf ' %s' "\$s"
-}
-if [[ -n "\${PS1:-}" ]] && [[ "\$PS1" != *"__dojo_ps1_tokens"* ]]; then
-  PS1="\${PS1}"' \$(__dojo_ps1_tokens)'
-fi
 $PROFILE_TAIL
 EOF
 }
@@ -188,7 +176,8 @@ ensure_profile_block() {
   local rc="$1" tmp
   [[ -f "$rc" ]] || : > "$rc"
   # Strip any previous dojo block so the installed version always wins on
-  # 'dojo update' (adds/replace the PS1 hook, PATH exports, etc.).
+  # 'dojo update' (PATH exports, ssh-agent, etc.). Also removes blocks from
+  # older dojo versions that still injected a PS1 token hook.
   if grep -qF "$PROFILE_MARKER" "$rc"; then
     tmp="$(mktemp)"
     awk -v head="$PROFILE_MARKER" -v tail="$PROFILE_TAIL" '
