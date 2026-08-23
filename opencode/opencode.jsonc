@@ -9,6 +9,10 @@
     "token-optimizer-opencode@1.1.0",
     "rtk-for-opencode@0.1.5",
     "@javargasm/opencode-graphify@0.2.0",
-    "opencode-token-usage@1.0.0"
+    "opencode-token-usage@1.0.0",
+    // Dominant community plugin: 11 subagents, LSP/AST tools, multi-agent
+    // team mode on git worktrees. Heavyweight — remove here first if hooks
+    // ever fight the token-optimization set above.
+    "oh-my-openagent@4.19.4"
   ]
 }
