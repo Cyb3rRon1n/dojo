@@ -206,14 +206,10 @@ cp "$DOJO_DIR/opencode/package-lock.json" "$OCONF/package-lock.json"
 echo "ok"
 
 if command -v npm >/dev/null 2>&1; then
-  # Newer npm gates postinstall scripts; oh-my-openagent's verifies its
-  # platform binary and clears opencode's plugin cache, so allow-list it
-  # where npm supports the flag (older npm: flag unknown -> omit).
-  NPM_ALLOW_SCRIPTS=""
-  if npm install --help 2>&1 | grep -q -- '--allow-scripts'; then
-    NPM_ALLOW_SCRIPTS="--allow-scripts=oh-my-openagent --allow-scripts=@code-yeongyu/comment-checker"
-  fi
-  run_step "opencode plugin dependencies" bash -c "cd '$OCONF' && npm install --legacy-peer-deps $NPM_ALLOW_SCRIPTS" \
+  # oh-my-openagent's gated postinstall is allow-listed via the
+  # "allowScripts" field in opencode/package.json (CLI --allow-scripts
+  # isn't accepted for project-scoped installs).
+  run_step "opencode plugin dependencies" bash -c "cd '$OCONF' && npm install --legacy-peer-deps" \
     || warn "opencode plugin install failed"
 else
   skip_step "opencode plugin dependencies" "npm missing"
