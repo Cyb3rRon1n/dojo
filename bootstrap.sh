@@ -240,6 +240,9 @@ if command -v claude >/dev/null 2>&1; then
     claude plugin marketplace add alexgreensh/token-optimizer
     claude plugin marketplace add DietrichGebert/ponytail
     claude plugin marketplace add obra/superpowers
+    # Anthropic'"'"'s official marketplace ships preconfigured with recent CLI
+    # versions; this is a no-op there and covers older installs.
+    claude plugin marketplace add anthropics/claude-plugins-official
   ' || warn "plugin marketplace registration failed"
 
   # -y/--yes was added to `claude plugin install` in a later CLI release -
@@ -261,6 +264,8 @@ if command -v claude >/dev/null 2>&1; then
     claude plugin install token-optimizer@alexgreensh-token-optimizer $CLAUDE_INSTALL_YES_FLAG
     claude plugin install ponytail@ponytail $CLAUDE_INSTALL_YES_FLAG
     claude plugin install superpowers@superpowers-dev $CLAUDE_INSTALL_YES_FLAG
+    claude plugin install code-review@claude-plugins-official $CLAUDE_INSTALL_YES_FLAG
+    claude plugin install pr-review-toolkit@claude-plugins-official $CLAUDE_INSTALL_YES_FLAG
   " || warn "plugin install failed"
 
   if command -v rtk >/dev/null 2>&1; then
