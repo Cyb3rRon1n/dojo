@@ -1,8 +1,8 @@
 <#
 .SYNOPSIS
   install.ps1 -- one-shot fresh-Windows-machine build-out for the dojo repo:
-  opencode, Claude Code, GitHub Copilot CLI, OpenAI Codex CLI, Aider, Gemini
-  CLI, OpenClaw, and Cursor, each wired up with whatever token-optimization
+  opencode, Claude Code, GitHub Copilot CLI, OpenAI Codex CLI, Aider, Google
+  Antigravity CLI, OpenClaw, and Cursor, each wired up with whatever token-optimization
   each one supports (RTK hooks, graphify, and -- for Claude Code + opencode
   only, for now -- ponytail/token-optimizer) + the projects\github\repos
   workspace, cloned and submodule-linked. Native Windows port of install.sh.
@@ -88,7 +88,7 @@ if (-not $GitAuthOk) {
 # runs with no console input default to installing everything, same as
 # install.sh's non-TTY default.
 # ---------------------------------------------------------------------------
-$AllTools = @("opencode", "claude", "copilot", "codex", "aider", "gemini", "openclaw", "cursor")
+$AllTools = @("opencode", "claude", "copilot", "codex", "aider", "agy", "openclaw", "cursor")
 if ($env:DOJO_TOOLS) {
   $SelectedTools = $env:DOJO_TOOLS -split ',' | ForEach-Object { $_.Trim() }
 } elseif (-not [Console]::IsInputRedirected) {
@@ -98,7 +98,7 @@ if ($env:DOJO_TOOLS) {
   Write-Host "  3) copilot  (GitHub Copilot CLI)"
   Write-Host "  4) codex    (OpenAI Codex CLI)"
   Write-Host "  5) aider"
-  Write-Host "  6) gemini   (Google Gemini CLI)"
+  Write-Host "  6) agy      (Google Antigravity CLI)"
   Write-Host "  7) openclaw (agent + plugins, token-optimizer/ponytail)"
   Write-Host "  8) cursor   (IDE -- install only, no plugin API)"
   $reply = Read-Host "Enter numbers/names (space or comma separated), or blank for all"
@@ -113,7 +113,7 @@ if ($env:DOJO_TOOLS) {
         { $_ -in "3", "copilot" }  { $SelectedTools += "copilot" }
         { $_ -in "4", "codex" }    { $SelectedTools += "codex" }
         { $_ -in "5", "aider" }    { $SelectedTools += "aider" }
-        { $_ -in "6", "gemini" }   { $SelectedTools += "gemini" }
+        { $_ -in "6", "agy" }      { $SelectedTools += "agy" }
         { $_ -in "7", "openclaw" } { $SelectedTools += "openclaw" }
         { $_ -in "8", "cursor" }   { $SelectedTools += "cursor" }
         default { Warn "unknown tool selection '$tok' -- ignoring" }
@@ -126,17 +126,17 @@ if ($env:DOJO_TOOLS) {
 function Want($tool) { $SelectedTools -contains $tool }
 
 # Node.js/npm aren't preinstalled on every fresh machine -- claude/copilot/
-# codex/gemini installs below all need npm. Bootstrap it via winget if
+# codex installs below need npm. Bootstrap it via winget if
 # missing and one of those was picked (simpler than nvm-windows' separate
 # version-management paradigm for the one thing dojo actually needs: npm on
 # PATH).
-if ((Want "claude") -or (Want "copilot") -or (Want "codex") -or (Want "gemini")) {
+if ((Want "claude") -or (Want "copilot") -or (Want "codex")) {
   if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
     Log "npm not found -- installing Node.js LTS via winget"
     if (Get-Command winget -ErrorAction SilentlyContinue) {
       winget install --id OpenJS.NodeJS.LTS -e --accept-source-agreements --accept-package-agreements --disable-interactivity | Out-Null
       $env:PATH = [Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [Environment]::GetEnvironmentVariable("PATH", "User")
-      if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { Warn "npm still missing after Node.js install -- claude/copilot/codex/gemini installs below will fail" }
+      if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { Warn "npm still missing after Node.js install -- claude/copilot/codex installs below will fail" }
     } else {
       Warn "npm missing and winget unavailable -- install Node.js manually from https://nodejs.org, then re-run this script"
     }
@@ -227,13 +227,15 @@ if (Want "aider") {
   }
 }
 
-if (Want "gemini") {
-  if (-not (Get-Command gemini -ErrorAction SilentlyContinue)) {
-    Log "installing Google Gemini CLI"
-    npm install -g @google/gemini-cli
-    if ($LASTEXITCODE -ne 0) { Warn "gemini install failed" }
+# Gemini CLI stopped serving consumer requests on 2026-06-18 (Google moved
+# everyone to Antigravity CLI -- a Go binary with its own installer).
+if (Want "agy") {
+  if (-not (Get-Command agy -ErrorAction SilentlyContinue)) {
+    Log "installing Google Antigravity CLI"
+    irm https://antigravity.google/cli/install.ps1 | iex
+    if (-not (Get-Command agy -ErrorAction SilentlyContinue)) { Warn "agy install failed" }
   } else {
-    Log "gemini already installed"
+    Log "agy already installed"
   }
 }
 
@@ -345,7 +347,7 @@ if (Test-Path (Join-Path $ReposDir ".git")) {
 git -C $ReposDir submodule update --init --recursive
 if ($LASTEXITCODE -ne 0) { Warn "submodule update failed" }
 
-Log "done. Restart opencode / Claude Code / Copilot CLI / Codex CLI / Aider / Gemini / OpenClaw / Cursor -- you're ready to launch in any repo."
+Log "done. Restart opencode / Claude Code / Copilot CLI / Codex CLI / Aider / Antigravity (agy) / OpenClaw / Cursor -- you're ready to launch in any repo."
 if (-not $GitAuthOk) {
   Warn "reminder: no GitHub auth was detected, so pushes will fail until you run"
   Warn "  ssh-keygen -t ed25519 -C you@example.com   (then add the key on GitHub)"
