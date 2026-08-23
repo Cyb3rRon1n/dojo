@@ -71,6 +71,7 @@ that offers to install all eight fresh).
 | [token-optimizer](https://github.com/alexgreensh/token-optimizer) | Audits the running session for context waste and gives a quality score | Claude Code, opencode, OpenClaw |
 | [ponytail](https://github.com/DietrichGebert/ponytail) | Coding-style guardrail against over-engineering — smallest correct solution, stdlib first | Claude Code, opencode, OpenClaw |
 | [opencode-token-usage](https://www.npmjs.com/package/opencode-token-usage) | Live token/cost usage in the opencode session list | opencode |
+| [oh-my-openagent](https://github.com/code-yeongyu/oh-my-openagent) | 11 subagents, LSP/AST tools, multi-agent team mode on git worktrees | opencode |
 | Aider's native settings | Turns on Aider's own built-in prompt caching (off by default upstream) — no plugin exists because Aider has no plugin system | Aider only |
 
 Nothing here is faked: token-optimizer and ponytail simply don't have a
@@ -89,7 +90,23 @@ methodology library and a meta-skill for growing your own skill set:
 | Plugin | What it does |
 |---|---|
 | [superpowers](https://github.com/obra/superpowers) | Skills library for TDD, systematic debugging, and collaboration patterns |
+| [code-review](https://claude.com/plugins/code-review) + [pr-review-toolkit](https://claude.com/plugins/pr-review-toolkit) | Anthropic's official review agents: five parallel reviewers with confidence-scored filtering, plus PR summarization and line-level review |
 | [task-observer](https://github.com/rebelytics/one-skill-to-rule-them-all) | Watches sessions for corrections/gaps and logs skill-improvement candidates for review — vendored under `claude/skills/task-observer/` (see that dir's `UPSTREAM.md`), since upstream ships as a plain skill bundle with no plugin-marketplace manifest |
+
+### Shared MCP servers
+
+Wired into both Claude Code (`claude mcp add --scope user`) and opencode
+(`mcp` block in `opencode.jsonc`) by bootstrap.sh:
+
+| Server | What it does | Auth |
+|---|---|---|
+| [Serena](https://github.com/oraios/serena) | Symbol-level semantic code tools (find/rename/references via LSP, 40+ languages) — big token saver on large repos. Installed via uv; opencode uses it with `--context ide` | none (local) |
+| [GitHub](https://github.com/github/github-mcp-server) (remote) | Official Issues/PRs/Actions/repos tooling, zero local deps | one-time interactive: `/mcp` in Claude Code or `opencode mcp auth github` — its OAuth server doesn't support dynamic client registration |
+| [Context7](https://github.com/upstash/context7) (remote) | Fresh version-specific library docs on demand | none |
+
+MCP servers add tool definitions to context — that's the point, but if you
+run lean sessions, disable what you don't use per project
+(`enabled: false` in `opencode.jsonc`, `claude mcp remove <name>`).
 
 ## Commands
 
@@ -171,6 +188,7 @@ to match across tools.
 | ponytail (`@dietrichgebert/ponytail`) | 4.9.0 |
 | graphify | 0.2.0 |
 | opencode-token-usage | 1.0.0 |
+| oh-my-openagent | 4.19.4 |
 
 Files this repo does **not** touch on your machine:
 - `~/.claude/settings.json` — hooks/settings stay machine-local. Only the

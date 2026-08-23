@@ -141,6 +141,17 @@ else
   skip_step "graphify binary" "uv missing — see https://docs.astral.sh/uv"
 fi
 
+# Serena: symbol-level semantic code tools (LSP-backed) served over MCP to
+# Claude Code and opencode below. Idempotent: re-run reports "already
+# installed" and exits 0.
+if command -v serena >/dev/null 2>&1; then
+  skip_step "serena binary"
+elif command -v uv >/dev/null 2>&1; then
+  run_step "serena binary" uv tool install -p 3.13 serena-agent || warn "serena install failed"
+else
+  skip_step "serena binary" "uv missing"
+fi
+
 step "dojo command (update/status/install/doctor)"
 mkdir -p "$LOCAL_BIN"
 ln -sf "$DOJO_DIR/dojo" "$LOCAL_BIN/dojo"
@@ -282,11 +293,32 @@ if command -v claude >/dev/null 2>&1; then
   else
     skip_step "graphify for Claude Code" "graphify missing"
   fi
+
+  # Shared MCP servers. Neither `serena setup` nor `claude mcp add` is
+  # idempotent (both exit non-zero on "already exists"), so probe first.
+  # github/context7 are remote HTTP servers — no local deps; GitHub needs a
+  # one-time interactive auth (/mcp in Claude Code) since its OAuth server
+  # doesn't support dynamic client registration.
+  if ! claude mcp get serena >/dev/null 2>&1; then
+    if command -v serena >/dev/null 2>&1; then
+      run_step "Serena MCP for Claude Code" serena setup claude-code || warn "serena claude setup failed"
+    else
+      skip_step "Serena MCP for Claude Code" "serena missing"
+    fi
+  else
+    skip_step "Serena MCP for Claude Code" "(already registered)"
+  fi
+  run_step "MCP servers for Claude Code (github, context7)" bash -c '
+    claude mcp get github   >/dev/null 2>&1 || claude mcp add --scope user --transport http github   https://api.githubcopilot.com/mcp/ >/dev/null
+    claude mcp get context7 >/dev/null 2>&1 || claude mcp add --scope user --transport http context7 https://mcp.context7.com/mcp/     >/dev/null
+  ' || warn "mcp server registration failed"
 else
   skip_step "Claude Code plugin marketplaces" "claude missing"
   skip_step "Claude Code plugins" "claude missing"
   skip_step "RTK Claude Code hook" "claude missing"
   skip_step "graphify for Claude Code" "claude missing"
+  skip_step "Serena MCP for Claude Code" "claude missing"
+  skip_step "MCP servers for Claude Code (github, context7)" "claude missing"
 fi
 
 # ---------------------------------------------------------------------------

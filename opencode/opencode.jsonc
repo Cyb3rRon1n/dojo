@@ -14,5 +14,27 @@
     // team mode on git worktrees. Heavyweight — remove here first if hooks
     // ever fight the token-optimization set above.
     "oh-my-openagent@4.19.4"
-  ]
+  ],
+
+  // Shared MCP servers (same trio Claude Code gets from bootstrap.sh).
+  // Remote servers add no local deps; GitHub OAuth fires on first use.
+  // Serena is installed by bootstrap.sh via uv; opencode skips a local
+  // server whose binary is missing.
+  "mcp": {
+    "serena": {
+      "type": "local",
+      "command": ["serena", "start-mcp-server", "--context", "ide"],
+      "enabled": true
+    },
+    "github": {
+      "type": "remote",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "enabled": true
+    },
+    "context7": {
+      "type": "remote",
+      "url": "https://mcp.context7.com/mcp/",
+      "enabled": true
+    }
+  }
 }
