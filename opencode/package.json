@@ -2,6 +2,7 @@
   "dependencies": {
     "@dietrichgebert/ponytail": "4.9.0",
     "@javargasm/opencode-graphify": "0.2.0",
+    "oh-my-openagent": "4.19.4",
     "@opencode-ai/plugin": "1.18.19",
     "opencode-token-usage": "1.0.0",
     "rtk-for-opencode": "0.1.5",
