@@ -309,6 +309,9 @@ if (Get-Command claude -ErrorAction SilentlyContinue) {
     claude plugin marketplace add alexgreensh/token-optimizer
     claude plugin marketplace add DietrichGebert/ponytail
     claude plugin marketplace add obra/superpowers
+    # Anthropic's official marketplace ships preconfigured with recent CLI
+    # versions; this is a no-op there and covers older installs.
+    claude plugin marketplace add anthropics/claude-plugins-official
   })) { Warn "plugin marketplace registration failed" }
 
   # Same reasoning as bootstrap.sh: detect -y/--yes support instead of
@@ -317,15 +320,22 @@ if (Get-Command claude -ErrorAction SilentlyContinue) {
   $helpOut = (& claude plugin install --help 2>&1 | Out-String)
   if ($helpOut -match '(^|[ ,])(-y|--yes)([ ,]|$)') { $ClaudeInstallYesFlag = "-y" }
 
+  # superpowers@superpowers-dev -- the marketplace name comes from that
+  # repo's own .claude-plugin/marketplace.json "name" field, not derived
+  # from the obra/superpowers owner/repo string above, same as bootstrap.sh.
   if (-not (RunStep "Claude Code plugins" {
     if ($ClaudeInstallYesFlag) {
       claude plugin install token-optimizer@alexgreensh-token-optimizer $ClaudeInstallYesFlag
       claude plugin install ponytail@ponytail $ClaudeInstallYesFlag
       claude plugin install superpowers@superpowers-dev $ClaudeInstallYesFlag
+      claude plugin install code-review@claude-plugins-official $ClaudeInstallYesFlag
+      claude plugin install pr-review-toolkit@claude-plugins-official $ClaudeInstallYesFlag
     } else {
       claude plugin install token-optimizer@alexgreensh-token-optimizer
       claude plugin install ponytail@ponytail
       claude plugin install superpowers@superpowers-dev
+      claude plugin install code-review@claude-plugins-official
+      claude plugin install pr-review-toolkit@claude-plugins-official
     }
   })) { Warn "plugin install failed" }
 
@@ -506,9 +516,9 @@ function Have($cmd) { if (Get-Command $cmd -ErrorAction SilentlyContinue) { "ins
 Write-Host "  plugins (opencode):   $(Have opencode)"
 $claudePluginCount = 0
 if (Get-Command claude -ErrorAction SilentlyContinue) {
-  $claudePluginCount = @(claude plugin list 2>$null | Select-String -Pattern 'ponytail|token-optimizer|superpowers').Count
+  $claudePluginCount = @(claude plugin list 2>$null | Select-String -Pattern 'ponytail|token-optimizer|superpowers|code-review|pr-review-toolkit').Count
 }
-Write-Host "  plugins (claude):     $claudePluginCount of 3"
+Write-Host "  plugins (claude):     $claudePluginCount of 5"
 $taskObserverInstalled = Test-Path (Join-Path $ClaudeHome "skills\task-observer\SKILL.md")
 Write-Host "  task-observer:        $(if ($taskObserverInstalled) { 'installed' } else { 'MISSING' })"
 Write-Host "  serena (MCP):         $(Have serena)"
