@@ -7,6 +7,66 @@ set -euo pipefail
 
 DOJO_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
+warn() { printf '[dojo][warn] %s\n' "$*" >&2; }
+
+# ---------------------------------------------------------------------------
+# fix_git_object_perms / safe_git_pull — same self-healing as install.sh's
+# copy (kept duplicated rather than shared: install.sh runs standalone via
+# `curl | bash` before ~/dojo exists on disk, so it can't source a file that
+# lives inside the repo it's about to clone). Fixes the failure mode where a
+# past root-run left some objects under $DOJO_DIR/.git owned by root, which
+# blocks a normal user's `git pull` with "insufficient permission ... .git/
+# objects" — 'dojo update' used to just crash on that instead of self-healing.
+# ---------------------------------------------------------------------------
+fix_git_object_perms() {
+  local dir="$1" bad
+  bad="$(find "$dir" -path '*/.git*' ! -user "$(id -u)" 2>/dev/null | head -5)"
+  [[ -n "$bad" ]] || return 1
+  warn "$dir: files under .git are owned by another user (likely a past 'sudo' run), blocking normal git operations:"
+  printf '%s\n' "$bad" | sed 's/^/[dojo][warn]   /' >&2
+  if [[ -t 0 ]] && command -v sudo >/dev/null 2>&1; then
+    read -r -p "[dojo] fix with 'sudo chown -R $(id -un):$(id -gn) $dir'? [y/N] " fix_reply || fix_reply="n"
+    if [[ "$fix_reply" =~ ^[Yy] ]] && sudo chown -R "$(id -u):$(id -g)" "$dir"; then
+      return 0
+    fi
+  fi
+  warn "fix manually with: sudo chown -R $(id -un):$(id -gn) $dir"
+  return 1
+}
+
+safe_git_pull() {
+  local dir="$1" label="$2" out
+
+  if out="$(git -C "$dir" pull --ff-only 2>&1)"; then
+    return 0
+  fi
+
+  if printf '%s' "$out" | grep -qi 'insufficient permission\|permission denied'; then
+    if fix_git_object_perms "$dir"; then
+      out="$(git -C "$dir" pull --ff-only 2>&1)" && { echo "[dojo] $label: ownership fixed, updated"; return 0; }
+    fi
+  fi
+
+  if printf '%s' "$out" | grep -qi 'overwritten by merge\|commit your changes or stash'; then
+    warn "$label: local changes in the working tree conflict with the update:"
+    printf '%s\n' "$out" | grep '^\s' | sed 's/^/[dojo][warn]   /' >&2
+    if [[ -t 0 ]]; then
+      read -r -p "[dojo] stash local changes in $dir and retry? [y/N] " stash_reply || stash_reply="n"
+      if [[ "$stash_reply" =~ ^[Yy] ]] && git -C "$dir" stash push -u -m "dojo auto-stash $(date +%s)" >/dev/null; then
+        if git -C "$dir" pull --ff-only >/dev/null; then
+          echo "[dojo] $label: local changes stashed (see 'git -C $dir stash list'), updated"
+          return 0
+        fi
+      fi
+    fi
+    warn "fix manually: cd $dir && git stash && git pull --ff-only"
+  fi
+
+  warn "$label pull failed"
+  printf '%s\n' "$out" | tail -10 >&2
+  return 1
+}
+
 usage() {
   cat <<'EOF'
 usage: dojo <command>
@@ -248,7 +308,7 @@ PY
 cmd="${1:-}"
 case "$cmd" in
   update)
-    git -C "$DOJO_DIR" pull --ff-only
+    safe_git_pull "$DOJO_DIR" "dojo" || true
     "$DOJO_DIR/bootstrap.sh"
     ;;
   install)
