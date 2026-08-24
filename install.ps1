@@ -51,6 +51,7 @@ function Die($msg)  { Write-Host "[dojo][error] $msg" -ForegroundColor Red; exit
 # ---------------------------------------------------------------------------
 function Test-GitPermissionFailure($Dir, $ErrorText) {
   if ($ErrorText -notmatch 'insufficient permission|permission denied') { return }
+  if ($ErrorText -match 'publickey') { return } # handled by Repair-SubmoduleSshAuth instead
   $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
   $bad = Get-ChildItem -Path $Dir -Recurse -Force -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -match '\\\.git(\\|$)' } |
@@ -63,6 +64,28 @@ function Test-GitPermissionFailure($Dir, $ErrorText) {
     $bad | ForEach-Object { Warn "  $_" }
     Warn "fix from an elevated PowerShell (Run as Administrator): takeown /r /f `"$Dir`" ; icacls `"$Dir`" /reset /t /c"
   }
+}
+
+# ---------------------------------------------------------------------------
+# Repair-SubmoduleSshAuth -- SSH pubkey auth failing for submodule URLs is
+# common even when the top-level clone succeeded fine over HTTPS: this
+# script's own SSH-then-HTTPS fallback only covers the top-level clone, not
+# `git submodule update` (git has no such fallback, and .gitmodules records
+# whichever URL form the workspace repo happened to use). Rewrite to HTTPS
+# and retry rather than requiring an SSH key on every machine just for this.
+# Returns $true if it fixed and retried successfully.
+# ---------------------------------------------------------------------------
+function Repair-SubmoduleSshAuth($Dir, $ErrorText) {
+  if ($ErrorText -notmatch 'Permission denied \(publickey\)|Could not read from remote repository') { return $false }
+  $gitmodules = Join-Path $Dir ".gitmodules"
+  if (-not (Test-Path $gitmodules)) { return $false }
+  $content = Get-Content $gitmodules -Raw
+  if ($content -notmatch 'git@github\.com:') { return $false }
+  Warn "submodule SSH auth failed -- rewriting .gitmodules to HTTPS and retrying"
+  ($content -replace 'git@github\.com:', 'https://github.com/') | Set-Content $gitmodules
+  git -C $Dir submodule sync *>$null
+  git -C $Dir submodule update --init --recursive *>$null
+  return ($LASTEXITCODE -eq 0)
 }
 
 $DojoDir      = if ($env:DOJO_DIR) { $env:DOJO_DIR } else { Join-Path $HOME "dojo" }
@@ -465,8 +488,12 @@ if (Test-Path (Join-Path $ReposDir ".git")) {
   }
   $subOut = (git -C $ReposDir submodule update --init --recursive 2>&1 | Out-String)
   if ($LASTEXITCODE -ne 0) {
-    Warn "submodule update failed"
-    Test-GitPermissionFailure $ReposDir $subOut
+    if (Repair-SubmoduleSshAuth $ReposDir $subOut) {
+      Log "repos submodules: switched to HTTPS, updated"
+    } else {
+      Warn "submodule update failed"
+      Test-GitPermissionFailure $ReposDir $subOut
+    }
   }
 
   # dojo's canonical home is $DojoDir ($HOME\dojo) -- a stray `git clone` of
@@ -498,8 +525,12 @@ if (Test-Path (Join-Path $ReposDir ".git")) {
   }
   $subOut = (git -C $ReposDir submodule update --init --recursive 2>&1 | Out-String)
   if ($LASTEXITCODE -ne 0) {
-    Warn "submodule update failed"
-    Test-GitPermissionFailure $ReposDir $subOut
+    if (Repair-SubmoduleSshAuth $ReposDir $subOut) {
+      Log "repos submodules: switched to HTTPS, updated"
+    } else {
+      Warn "submodule update failed"
+      Test-GitPermissionFailure $ReposDir $subOut
+    }
   }
 } else {
   Log 'no multi-repo workspace configured -- skipping (set $env:DOJO_REPOS_REPO to add one later)'

@@ -99,10 +99,32 @@ safe_git_pull() {
 # ---------------------------------------------------------------------------
 safe_submodule_update() {
   local dir="$1" out
+
   if out="$(git -C "$dir" submodule update --init --recursive 2>&1)"; then
     return 0
   fi
-  if printf '%s' "$out" | grep -qi 'insufficient permission\|permission denied'; then
+
+  # SSH pubkey auth failing for submodule URLs is common even when the
+  # top-level clone succeeded fine over HTTPS: this script's own
+  # SSH-then-HTTPS fallback only covers the top-level clone, not
+  # `git submodule update` (git has no such fallback, and .gitmodules
+  # records whichever URL form the workspace repo happened to use).
+  # Rewrite to HTTPS and retry rather than requiring an SSH key on every
+  # machine just for this. Checked before the generic permission-denied
+  # branch below since "Permission denied (publickey)" also matches that
+  # pattern but means something different (remote auth, not local perms).
+  if printf '%s' "$out" | grep -qiE 'permission denied \(publickey\)|could not read from remote repository'; then
+    if [[ -f "$dir/.gitmodules" ]] && grep -q 'git@github\.com:' "$dir/.gitmodules"; then
+      warn "submodule SSH auth failed — rewriting .gitmodules to HTTPS and retrying"
+      sed -i.bak 's#git@github\.com:#https://github.com/#g' "$dir/.gitmodules"
+      git -C "$dir" submodule sync >/dev/null 2>&1
+      if out="$(git -C "$dir" submodule update --init --recursive 2>&1)"; then
+        log "repos submodules: switched to HTTPS, updated"
+        rm -f "$dir/.gitmodules.bak"
+        return 0
+      fi
+    fi
+  elif printf '%s' "$out" | grep -qi 'insufficient permission\|permission denied'; then
     if fix_git_object_perms "$dir"; then
       if out="$(git -C "$dir" submodule update --init --recursive 2>&1)"; then
         log "repos submodules: ownership fixed, updated"
@@ -110,6 +132,7 @@ safe_submodule_update() {
       fi
     fi
   fi
+
   warn "submodule update failed"
   printf '%s\n' "$out" | tail -10 >&2
   return 1
