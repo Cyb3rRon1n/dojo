@@ -296,9 +296,11 @@ if command -v claude >/dev/null 2>&1; then
 
   # Shared MCP servers. Neither `serena setup` nor `claude mcp add` is
   # idempotent (both exit non-zero on "already exists"), so probe first.
-  # github/context7 are remote HTTP servers — no local deps; GitHub needs a
+  # github/context7 are remote HTTP servers — no local deps. GitHub needs a
   # one-time interactive auth (/mcp in Claude Code) since its OAuth server
-  # doesn't support dynamic client registration.
+  # doesn't support dynamic client registration; flag a fresh registration
+  # so the end-of-run verification can tell the user exactly that.
+  claude mcp get github >/dev/null 2>&1 || GITHUB_MCP_NEW=1
   if ! claude mcp get serena >/dev/null 2>&1; then
     if command -v serena >/dev/null 2>&1; then
       run_step "Serena MCP for Claude Code" serena setup claude-code || warn "serena claude setup failed"
@@ -443,13 +445,21 @@ fi
 # ---------------------------------------------------------------------------
 echo "[dojo] verification"
 echo "  plugins (opencode):   $(command -v opencode >/dev/null && echo installed || echo MISSING)"
-echo "  plugins (claude):     $(command -v claude >/dev/null && claude plugin list 2>/dev/null | grep -ciE 'ponytail|token-optimizer|superpowers' || echo 0) of 3"
+echo "  plugins (claude):     $(command -v claude >/dev/null && claude plugin list 2>/dev/null | grep -ciE 'ponytail|token-optimizer|superpowers|code-review|pr-review-toolkit' || echo 0) of 5"
 echo "  task-observer:        $([ -e "$CLAUDE_HOME/skills/task-observer/SKILL.md" ] && echo installed || echo MISSING)"
+echo "  serena (MCP):         $(command -v serena >/dev/null && echo installed || echo MISSING)"
 echo "  copilot:              $(command -v copilot >/dev/null && echo installed || echo MISSING)"
 echo "  codex:                $(command -v codex >/dev/null && echo installed || echo MISSING)"
 echo "  aider:                $(command -v aider >/dev/null && echo installed || echo MISSING)"
 echo "  openclaw:             $(command -v openclaw >/dev/null && echo installed || echo MISSING)"
 echo "  rtk:                  $(command -v rtk >/dev/null && rtk --version | head -1 || echo MISSING)"
 echo "  graphify:              $(command -v graphify >/dev/null && graphify --version | head -1 || echo MISSING)"
+
+if [ "${GITHUB_MCP_NEW:-0}" = 1 ] && command -v claude >/dev/null 2>&1; then
+  echo "[dojo]"
+  echo "[dojo] ONE MANUAL STEP (once per machine): the GitHub MCP server needs an"
+  echo "[dojo]   interactive login. Open Claude Code, type /mcp, pick 'github',"
+  echo "[dojo]   and authorize. opencode users: run 'opencode mcp auth github'."
+fi
 
 echo "[dojo] done. Restart opencode and Claude Code on this machine."

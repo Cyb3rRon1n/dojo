@@ -410,6 +410,9 @@ git -C $ReposDir submodule update --init --recursive
 if ($LASTEXITCODE -ne 0) { Warn "submodule update failed" }
 
 Log "done. Restart opencode / Claude Code / Copilot CLI / Codex CLI / Aider / Antigravity (agy) / OpenClaw / Cursor / Cline / Qwen / Goose / Pi -- you're ready to launch in any repo."
+if ($SelectedTools -contains "claude") {
+  Log "one manual step, once per machine: open Claude Code and run '/mcp', pick 'github', authorize -- that wires up GitHub Issues/PRs tooling for every session after"
+}
 if (-not $GitAuthOk) {
   Warn "reminder: no GitHub auth was detected, so pushes will fail until you run"
   Warn "  ssh-keygen -t ed25519 -C you@example.com   (then add the key on GitHub)"
