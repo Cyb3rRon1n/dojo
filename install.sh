@@ -24,6 +24,39 @@ log()  { printf '[dojo] %s\n' "$*"; }
 warn() { printf '[dojo][warn] %s\n' "$*" >&2; }
 die()  { printf '[dojo][error] %s\n' "$*" >&2; exit 1; }
 
+# ---------------------------------------------------------------------------
+# safe_git_pull <dir> <label> — pull --ff-only, self-healing the most common
+# failure mode we see: a past root-run (accidental sudo, a root-owned tool)
+# left some objects under <dir>/.git owned by root, so a normal user's git
+# can no longer write new objects there ("insufficient permission ... .git/
+# objects"). Detect that specifically, offer to chown it back, retry once.
+# ---------------------------------------------------------------------------
+safe_git_pull() {
+  local dir="$1" label="$2" out bad
+  if out="$(git -C "$dir" pull --ff-only 2>&1)"; then
+    return 0
+  fi
+  if printf '%s' "$out" | grep -qi 'insufficient permission\|permission denied'; then
+    bad="$(find "$dir" -path '*/.git*' ! -user "$(id -u)" 2>/dev/null | head -5)"
+    if [[ -n "$bad" ]]; then
+      warn "$label: files under .git are owned by another user (likely a past 'sudo' run), blocking normal git operations:"
+      printf '%s\n' "$bad" | sed 's/^/[dojo][warn]   /' >&2
+      if [[ -t 0 ]] && command -v sudo >/dev/null 2>&1; then
+        read -r -p "[dojo] fix with 'sudo chown -R $(id -un):$(id -gn) $dir'? [y/N] " fix_reply || fix_reply="n"
+        if [[ "$fix_reply" =~ ^[Yy] ]] && sudo chown -R "$(id -u):$(id -g)" "$dir"; then
+          if git -C "$dir" pull --ff-only >/dev/null; then
+            log "$label: ownership fixed, updated"
+            return 0
+          fi
+        fi
+      fi
+      warn "fix manually with: sudo chown -R $(id -un):$(id -gn) $dir"
+    fi
+  fi
+  warn "$label pull failed"
+  return 1
+}
+
 DOJO_DIR="${DOJO_DIR:-$HOME/dojo}"
 DOJO_REPO="git@github.com:Cyb3rRon1n/dojo.git"
 DOJO_HTTPS="https://github.com/Cyb3rRon1n/dojo.git"
@@ -286,7 +319,7 @@ fi
 # ---------------------------------------------------------------------------
 if [[ -d "$DOJO_DIR/.git" ]]; then
   log "updating $DOJO_DIR"
-  git -C "$DOJO_DIR" pull --ff-only >/dev/null || warn "dojo pull failed"
+  safe_git_pull "$DOJO_DIR" "dojo"
 else
   log "cloning dojo -> $DOJO_DIR"
   git clone "$DOJO_REPO" "$DOJO_DIR" 2>/dev/null || git clone "$DOJO_HTTPS" "$DOJO_DIR" || die "clone failed"
@@ -303,7 +336,7 @@ log "running bootstrap"
 # ---------------------------------------------------------------------------
 if [[ -d "$REPOS_DIR/.git" ]]; then
   log "updating $REPOS_DIR"
-  git -C "$REPOS_DIR" pull --ff-only >/dev/null || warn "repos pull failed"
+  safe_git_pull "$REPOS_DIR" "repos"
 else
   log "cloning repos workspace -> $REPOS_DIR"
   mkdir -p "$(dirname "$REPOS_DIR")"
@@ -335,6 +368,12 @@ if [[ -t 0 && -d "$REPOS_DIR" ]]; then
     *)
       log "entering $REPOS_DIR — type 'exit' to leave."
       cd "$REPOS_DIR"
+      # Drop our -euo pipefail before handing off: bash auto-exports active
+      # `set -o` options via $SHELLOPTS, so without this the interactive
+      # shell inherits `nounset` and chokes on distro profile scripts that
+      # reference not-yet-set vars (e.g. Fedora's bash-color-prompt.sh and
+      # $PROMPT_START), which is never a problem in a normal login shell.
+      set +euo pipefail
       exec "${SHELL:-bash}"
       ;;
   esac
