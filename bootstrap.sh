@@ -444,6 +444,14 @@ else
   skip_step "OpenClaw plugins" "openclaw missing"
 fi
 
+# TOTAL_STEPS is a hand-maintained constant (self-counting it would mean
+# parsing this script's own if/elif/else branches for distinct step labels
+# — more fragile than the drift it'd prevent). Catch drift here instead of
+# letting the "(n/N)" progress display silently go wrong again.
+if [[ "$STEP_N" -ne "$TOTAL_STEPS" ]]; then
+  warn "TOTAL_STEPS=$TOTAL_STEPS but $STEP_N steps actually ran — update the TOTAL_STEPS constant near the top of this script"
+fi
+
 # ---------------------------------------------------------------------------
 # 7. Verify
 # ---------------------------------------------------------------------------
