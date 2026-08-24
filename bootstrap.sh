@@ -147,7 +147,11 @@ fi
 if command -v serena >/dev/null 2>&1; then
   skip_step "serena binary"
 elif command -v uv >/dev/null 2>&1; then
-  run_step "serena binary" uv tool install -p 3.13 serena-agent || warn "serena install failed"
+  # `uv tool install -p 3.13` fails outright if 3.13 isn't already a managed
+  # interpreter and python-downloads is set to "manual" (uv won't fetch it
+  # implicitly then) — fetch it explicitly first; a no-op if already present.
+  run_step "serena binary" bash -c 'uv python install 3.13 && uv tool install -p 3.13 serena-agent' \
+    || warn "serena install failed"
 else
   skip_step "serena binary" "uv missing"
 fi
