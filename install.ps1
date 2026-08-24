@@ -4,8 +4,9 @@
   opencode, Claude Code, GitHub Copilot CLI, OpenAI Codex CLI, Aider, Google
   Antigravity CLI, OpenClaw, and Cursor, each wired up with whatever token-optimization
   each one supports (RTK hooks, graphify, and -- for Claude Code + opencode
-  only, for now -- ponytail/token-optimizer) + the projects\github\repos
-  workspace, cloned and submodule-linked. Native Windows port of install.sh.
+  only, for now -- ponytail/token-optimizer) + (optionally) your own
+  multi-repo GitHub workspace, cloned and submodule-linked into
+  projects\github\repos. Native Windows port of install.sh.
 
     powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/Cyb3rRon1n/dojo/main/install.ps1 | iex"
 
@@ -13,9 +14,13 @@
   manual step this doesn't cover is GitHub auth (SSH key or HTTPS login) --
   do that first, or this script will tell you to at the end.
 
-  Interactive runs prompt for which tools to install. To skip the prompt
-  (e.g. scripted/headless), set $env:DOJO_TOOLS to a comma list first:
-    $env:DOJO_TOOLS = "opencode,claude"; irm .../install.ps1 | iex
+  Interactive runs prompt for which tools to install, and (on a machine
+  that hasn't cloned one yet) for your own owner/repo to use as the
+  multi-repo workspace -- leave that blank to skip it entirely. To skip
+  either prompt (e.g. scripted/headless), set the env vars first:
+    $env:DOJO_TOOLS = "opencode,claude"
+    $env:DOJO_REPOS_REPO = "you/your-workspace"
+    irm .../install.ps1 | iex
 
   Install-method notes vs. install.sh (confirmed against each tool's own
   docs -- not guessed):
@@ -36,8 +41,6 @@ $DojoDir      = if ($env:DOJO_DIR) { $env:DOJO_DIR } else { Join-Path $HOME "doj
 $DojoRepoSsh  = "git@github.com:Cyb3rRon1n/dojo.git"
 $DojoRepoHttps = "https://github.com/Cyb3rRon1n/dojo.git"
 $ReposDir     = if ($env:REPOS_DIR) { $env:REPOS_DIR } else { Join-Path $HOME "projects\github\repos" }
-$ReposRepoSsh = "git@github.com:Cyb3rRon1n/foundry.git"
-$ReposRepoHttps = "https://github.com/Cyb3rRon1n/foundry.git"
 $LocalBin     = Join-Path $HOME ".local\bin"
 $OpencodeBin  = Join-Path $HOME ".opencode\bin"
 $NpmGlobal    = Join-Path $HOME ".npm-global"
@@ -132,6 +135,35 @@ if ($env:DOJO_TOOLS) {
   $SelectedTools = $AllTools
 }
 function Want($tool) { $SelectedTools -contains $tool }
+
+# ---------------------------------------------------------------------------
+# Multi-repo workspace -- *your* GitHub org/repo, not dojo's. This used to be
+# hardcoded to the dojo author's own workspace repo, which meant anyone else
+# running this installer got the author's personal projects cloned onto
+# their machine. Ask instead. $env:DOJO_REPOS_REPO=owner/repo skips the
+# prompt for scripted/headless runs; leaving it blank (prompt or env) skips
+# this whole step -- no multi-repo workspace is a perfectly fine answer.
+# ---------------------------------------------------------------------------
+$ReposSlug = $env:DOJO_REPOS_REPO
+if ((-not $ReposSlug) -and (-not (Test-Path (Join-Path $ReposDir ".git"))) -and (-not [Console]::IsInputRedirected)) {
+  $defaultSlug = ""
+  if (Get-Command gh -ErrorAction SilentlyContinue) {
+    $defaultOwner = (gh api user --jq .login 2>$null)
+    if ($defaultOwner) { $defaultSlug = "$defaultOwner/foundry" }
+  }
+  $promptSuffix = if ($defaultSlug) { " [$defaultSlug]" } else { "" }
+  $ReposSlug = Read-Host "GitHub owner/repo for your multi-repo workspace$promptSuffix, blank to skip"
+  if (-not $ReposSlug) { $ReposSlug = $defaultSlug }
+}
+if ($ReposSlug -match '://' -or $ReposSlug -like 'git@*') {
+  # Already a full URL (someone pasted one instead of owner/repo shorthand)
+  # -- use it as-is rather than mangling it into git@github.com:https://....
+  $ReposRepoSsh = $ReposSlug
+  $ReposRepoHttps = $ReposSlug
+} else {
+  $ReposRepoSsh = "git@github.com:$ReposSlug.git"
+  $ReposRepoHttps = "https://github.com/$ReposSlug.git"
+}
 
 # Node.js/npm aren't preinstalled on every fresh machine -- claude/copilot/
 # codex installs below need npm. Bootstrap it via winget if
@@ -397,7 +429,9 @@ if (Test-Path (Join-Path $ReposDir ".git")) {
   Log "updating $ReposDir"
   git -C $ReposDir pull --ff-only
   if ($LASTEXITCODE -ne 0) { Warn "repos pull failed" }
-} else {
+  git -C $ReposDir submodule update --init --recursive
+  if ($LASTEXITCODE -ne 0) { Warn "submodule update failed" }
+} elseif ($ReposSlug) {
   Log "cloning repos workspace -> $ReposDir"
   New-Item -ItemType Directory -Path (Split-Path $ReposDir -Parent) -Force | Out-Null
   git clone $ReposRepoSsh $ReposDir 2>$null
@@ -405,9 +439,11 @@ if (Test-Path (Join-Path $ReposDir ".git")) {
     git clone $ReposRepoHttps $ReposDir
     if ($LASTEXITCODE -ne 0) { Die "repos clone failed" }
   }
+  git -C $ReposDir submodule update --init --recursive
+  if ($LASTEXITCODE -ne 0) { Warn "submodule update failed" }
+} else {
+  Log 'no multi-repo workspace configured -- skipping (set $env:DOJO_REPOS_REPO to add one later)'
 }
-git -C $ReposDir submodule update --init --recursive
-if ($LASTEXITCODE -ne 0) { Warn "submodule update failed" }
 
 Log "done. Restart opencode / Claude Code / Copilot CLI / Codex CLI / Aider / Antigravity (agy) / OpenClaw / Cursor / Cline / Qwen / Goose / Pi -- you're ready to launch in any repo."
 if ($SelectedTools -contains "claude") {
