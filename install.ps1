@@ -37,6 +37,34 @@ function Log($msg)  { Write-Host "[dojo] $msg" }
 function Warn($msg) { Write-Host "[dojo][warn] $msg" -ForegroundColor Yellow }
 function Die($msg)  { Write-Host "[dojo][error] $msg" -ForegroundColor Red; exit 1 }
 
+# ---------------------------------------------------------------------------
+# Test-GitPermissionFailure -- diagnostic-only Windows analog of install.sh's
+# root-owned-object self-heal: a past elevated ("Run as Administrator") git
+# operation can leave files under <dir>\.git* owned by a different account,
+# blocking a normal user's git pull. git generates the "insufficient
+# permission ... .git/objects" text itself (not the OS), so it's identical
+# on every platform -- only the repair mechanism differs. Unlike the Linux
+# chown fix, Windows ownership repair needs elevation (takeown), and an
+# automated UAC elevate-and-retry flow isn't something this script can
+# verify without a real Windows box to test against -- so this only
+# diagnoses and prints the exact fix command, it doesn't attempt one.
+# ---------------------------------------------------------------------------
+function Test-GitPermissionFailure($Dir, $ErrorText) {
+  if ($ErrorText -notmatch 'insufficient permission|permission denied') { return }
+  $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+  $bad = Get-ChildItem -Path $Dir -Recurse -Force -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -match '\\\.git(\\|$)' } |
+    Where-Object {
+      try { (Get-Acl $_.FullName -ErrorAction Stop).Owner -ne $currentUser } catch { $false }
+    } |
+    Select-Object -First 5 -ExpandProperty FullName
+  if ($bad) {
+    Warn "$Dir`: files under .git are owned by another account (likely a past 'Run as Administrator'), blocking normal git operations:"
+    $bad | ForEach-Object { Warn "  $_" }
+    Warn "fix from an elevated PowerShell (Run as Administrator): takeown /r /f `"$Dir`" ; icacls `"$Dir`" /reset /t /c"
+  }
+}
+
 $DojoDir      = if ($env:DOJO_DIR) { $env:DOJO_DIR } else { Join-Path $HOME "dojo" }
 $DojoRepoSsh  = "git@github.com:Cyb3rRon1n/dojo.git"
 $DojoRepoHttps = "https://github.com/Cyb3rRon1n/dojo.git"
@@ -405,8 +433,11 @@ if (-not ((Test-RealPython "python3") -or (Test-RealPython "python"))) {
 # ---------------------------------------------------------------------------
 if (Test-Path (Join-Path $DojoDir ".git")) {
   Log "updating $DojoDir"
-  git -C $DojoDir pull --ff-only
-  if ($LASTEXITCODE -ne 0) { Warn "dojo pull failed" }
+  $pullOut = (git -C $DojoDir pull --ff-only 2>&1 | Out-String)
+  if ($LASTEXITCODE -ne 0) {
+    Warn "dojo pull failed"
+    Test-GitPermissionFailure $DojoDir $pullOut
+  }
 } else {
   Log "cloning dojo -> $DojoDir"
   git clone $DojoRepoSsh $DojoDir 2>$null
@@ -427,10 +458,16 @@ Log "running bootstrap"
 # ---------------------------------------------------------------------------
 if (Test-Path (Join-Path $ReposDir ".git")) {
   Log "updating $ReposDir"
-  git -C $ReposDir pull --ff-only
-  if ($LASTEXITCODE -ne 0) { Warn "repos pull failed" }
-  git -C $ReposDir submodule update --init --recursive
-  if ($LASTEXITCODE -ne 0) { Warn "submodule update failed" }
+  $pullOut = (git -C $ReposDir pull --ff-only 2>&1 | Out-String)
+  if ($LASTEXITCODE -ne 0) {
+    Warn "repos pull failed"
+    Test-GitPermissionFailure $ReposDir $pullOut
+  }
+  $subOut = (git -C $ReposDir submodule update --init --recursive 2>&1 | Out-String)
+  if ($LASTEXITCODE -ne 0) {
+    Warn "submodule update failed"
+    Test-GitPermissionFailure $ReposDir $subOut
+  }
 
   # dojo's canonical home is $DojoDir ($HOME\dojo) -- a stray `git clone` of
   # it dropped straight into the multi-repo workspace (not registered as one
@@ -459,8 +496,11 @@ if (Test-Path (Join-Path $ReposDir ".git")) {
     git clone $ReposRepoHttps $ReposDir
     if ($LASTEXITCODE -ne 0) { Die "repos clone failed" }
   }
-  git -C $ReposDir submodule update --init --recursive
-  if ($LASTEXITCODE -ne 0) { Warn "submodule update failed" }
+  $subOut = (git -C $ReposDir submodule update --init --recursive 2>&1 | Out-String)
+  if ($LASTEXITCODE -ne 0) {
+    Warn "submodule update failed"
+    Test-GitPermissionFailure $ReposDir $subOut
+  }
 } else {
   Log 'no multi-repo workspace configured -- skipping (set $env:DOJO_REPOS_REPO to add one later)'
 }
