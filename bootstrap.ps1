@@ -39,7 +39,7 @@ function Warn($msg) { Write-Host "[dojo][warn] $msg" -ForegroundColor Yellow }
 # Progress: "[dojo] (n/N) step description... ok/skip/FAILED" -- one line per
 # step, matching bootstrap.sh's format.
 # ---------------------------------------------------------------------------
-$TotalSteps = 22
+$TotalSteps = 25
 $script:StepN = 0
 function Step($desc) {
   $script:StepN++
@@ -150,6 +150,24 @@ if (Get-Command graphify -ErrorAction SilentlyContinue) {
   if (-not (RunStep "graphify binary" { uv tool install graphifyy })) { Warn "graphify install failed" }
 } else {
   SkipStep "graphify binary" "uv missing -- see https://docs.astral.sh/uv"
+}
+
+# Serena: symbol-level semantic code tools (LSP-backed) served over MCP to
+# Claude Code and opencode below. Idempotent: re-run reports "already
+# installed" and exits 0.
+if (Get-Command serena -ErrorAction SilentlyContinue) {
+  SkipStep "serena binary"
+} elseif (Get-Command uv -ErrorAction SilentlyContinue) {
+  # `uv tool install -p 3.13` fails outright if 3.13 isn't already a managed
+  # interpreter and python-downloads is set to "manual" (uv won't fetch it
+  # implicitly then) -- fetch it explicitly first; a no-op if already present.
+  if (-not (RunStep "serena binary" {
+    uv python install 3.13
+    if ($LASTEXITCODE -ne 0) { throw "uv python install 3.13 failed" }
+    uv tool install -p 3.13 serena-agent
+  })) { Warn "serena install failed" }
+} else {
+  SkipStep "serena binary" "uv missing"
 }
 
 # ---------------------------------------------------------------------------
@@ -285,6 +303,7 @@ Write-Host "ok"
 # ---------------------------------------------------------------------------
 # 3. Claude Code plugins (marketplace + install are idempotent)
 # ---------------------------------------------------------------------------
+$GithubMcpNew = $false
 if (Get-Command claude -ErrorAction SilentlyContinue) {
   if (-not (RunStep "Claude Code plugin marketplaces" {
     claude plugin marketplace add alexgreensh/token-optimizer
@@ -321,11 +340,46 @@ if (Get-Command claude -ErrorAction SilentlyContinue) {
   } else {
     SkipStep "graphify for Claude Code" "graphify missing"
   }
+
+  # Shared MCP servers. Neither `serena setup` nor `claude mcp add` is
+  # idempotent (both exit non-zero on "already exists"), so probe first.
+  # github/context7 are remote HTTP servers -- no local deps. GitHub needs a
+  # one-time interactive auth (/mcp in Claude Code) since its OAuth server
+  # doesn't support dynamic client registration; flag a fresh registration
+  # so the end-of-run verification can tell the user exactly that.
+  claude mcp get github *>$null
+  $GithubMcpNew = ($LASTEXITCODE -ne 0)
+
+  claude mcp get serena *>$null
+  if ($LASTEXITCODE -ne 0) {
+    if (Get-Command serena -ErrorAction SilentlyContinue) {
+      if (-not (RunStep "Serena MCP for Claude Code" { serena setup claude-code })) { Warn "serena claude setup failed" }
+    } else {
+      SkipStep "Serena MCP for Claude Code" "serena missing"
+    }
+  } else {
+    SkipStep "Serena MCP for Claude Code" "(already registered)"
+  }
+
+  if (-not (RunStep "MCP servers for Claude Code (github, context7)" {
+    claude mcp get github *>$null
+    if ($LASTEXITCODE -ne 0) {
+      claude mcp add --scope user --transport http github https://api.githubcopilot.com/mcp/ *>$null
+      if ($LASTEXITCODE -ne 0) { throw "github mcp add failed" }
+    }
+    claude mcp get context7 *>$null
+    if ($LASTEXITCODE -ne 0) {
+      claude mcp add --scope user --transport http context7 https://mcp.context7.com/mcp/ *>$null
+      if ($LASTEXITCODE -ne 0) { throw "context7 mcp add failed" }
+    }
+  })) { Warn "mcp server registration failed" }
 } else {
   SkipStep "Claude Code plugin marketplaces" "claude missing"
   SkipStep "Claude Code plugins" "claude missing"
   SkipStep "RTK Claude Code hook" "claude missing"
   SkipStep "graphify for Claude Code" "claude missing"
+  SkipStep "Serena MCP for Claude Code" "claude missing"
+  SkipStep "MCP servers for Claude Code (github, context7)" "claude missing"
 }
 
 # ---------------------------------------------------------------------------
@@ -457,6 +511,7 @@ if (Get-Command claude -ErrorAction SilentlyContinue) {
 Write-Host "  plugins (claude):     $claudePluginCount of 3"
 $taskObserverInstalled = Test-Path (Join-Path $ClaudeHome "skills\task-observer\SKILL.md")
 Write-Host "  task-observer:        $(if ($taskObserverInstalled) { 'installed' } else { 'MISSING' })"
+Write-Host "  serena (MCP):         $(Have serena)"
 Write-Host "  copilot:              $(Have copilot)"
 Write-Host "  codex:                $(Have codex)"
 Write-Host "  aider:                $(Have aider)"
@@ -464,6 +519,13 @@ Write-Host "  openclaw:             $(Have openclaw)"
 Write-Host "  rtk:                  $(if (Get-Command rtk -ErrorAction SilentlyContinue) { (rtk --version | Select-Object -First 1) } else { 'MISSING' })"
 Write-Host "  graphify:             $(if (Get-Command graphify -ErrorAction SilentlyContinue) { (graphify --version | Select-Object -First 1) } else { 'MISSING' })"
 Write-Host "  dojo CLI:             $(if (Test-Path (Join-Path $LocalBin 'dojo.cmd')) { 'wired via git-bash' } else { 'unavailable -- see warning above' })"
+
+if ($GithubMcpNew -and (Get-Command claude -ErrorAction SilentlyContinue)) {
+  Write-Host "[dojo]"
+  Write-Host "[dojo] ONE MANUAL STEP (once per machine): the GitHub MCP server needs an"
+  Write-Host "[dojo]   interactive login. Open Claude Code, type /mcp, pick 'github',"
+  Write-Host "[dojo]   and authorize. opencode users: run 'opencode mcp auth github'."
+}
 
 # ---------------------------------------------------------------------------
 # 8. SSH agent setup -- Windows' built-in OpenSSH Authentication Agent
