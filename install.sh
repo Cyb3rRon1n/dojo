@@ -33,9 +33,11 @@ die()  { printf '[dojo][error] %s\n' "$*" >&2; exit 1; }
 # ---------------------------------------------------------------------------
 safe_git_pull() {
   local dir="$1" label="$2" out bad
+
   if out="$(git -C "$dir" pull --ff-only 2>&1)"; then
     return 0
   fi
+
   if printf '%s' "$out" | grep -qi 'insufficient permission\|permission denied'; then
     bad="$(find "$dir" -path '*/.git*' ! -user "$(id -u)" 2>/dev/null | head -5)"
     if [[ -n "$bad" ]]; then
@@ -44,16 +46,34 @@ safe_git_pull() {
       if [[ -t 0 ]] && command -v sudo >/dev/null 2>&1; then
         read -r -p "[dojo] fix with 'sudo chown -R $(id -un):$(id -gn) $dir'? [y/N] " fix_reply || fix_reply="n"
         if [[ "$fix_reply" =~ ^[Yy] ]] && sudo chown -R "$(id -u):$(id -g)" "$dir"; then
-          if git -C "$dir" pull --ff-only >/dev/null; then
-            log "$label: ownership fixed, updated"
-            return 0
-          fi
+          out="$(git -C "$dir" pull --ff-only 2>&1)" && { log "$label: ownership fixed, updated"; return 0; }
         fi
+      else
+        warn "fix manually with: sudo chown -R $(id -un):$(id -gn) $dir"
       fi
-      warn "fix manually with: sudo chown -R $(id -un):$(id -gn) $dir"
     fi
   fi
+
+  # A prior interrupted/permission-blocked pull can leave the working tree
+  # with local diffs (e.g. a partially-applied merge) that block --ff-only.
+  # git stash is the safe, reversible fix — never reset --hard.
+  if printf '%s' "$out" | grep -qi 'overwritten by merge\|commit your changes or stash'; then
+    warn "$label: local changes in the working tree conflict with the update:"
+    printf '%s\n' "$out" | grep '^\s' | sed 's/^/[dojo][warn]   /' >&2
+    if [[ -t 0 ]]; then
+      read -r -p "[dojo] stash local changes in $dir and retry? [y/N] " stash_reply || stash_reply="n"
+      if [[ "$stash_reply" =~ ^[Yy] ]] && git -C "$dir" stash push -u -m "dojo auto-stash $(date +%s)" >/dev/null; then
+        if git -C "$dir" pull --ff-only >/dev/null; then
+          log "$label: local changes stashed (see 'git -C $dir stash list'), updated"
+          return 0
+        fi
+      fi
+    fi
+    warn "fix manually: cd $dir && git stash && git pull --ff-only"
+  fi
+
   warn "$label pull failed"
+  printf '%s\n' "$out" | tail -10 >&2
   return 1
 }
 
