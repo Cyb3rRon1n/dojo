@@ -431,6 +431,26 @@ if (Test-Path (Join-Path $ReposDir ".git")) {
   if ($LASTEXITCODE -ne 0) { Warn "repos pull failed" }
   git -C $ReposDir submodule update --init --recursive
   if ($LASTEXITCODE -ne 0) { Warn "submodule update failed" }
+
+  # dojo's canonical home is $DojoDir ($HOME\dojo) -- a stray `git clone` of
+  # it dropped straight into the multi-repo workspace (not registered as one
+  # of its submodules) is just confusing clutter, so move it aside rather
+  # than leaving two copies of the same repo around.
+  $strayDojo = Join-Path $ReposDir "dojo"
+  $gitmodulesPath = Join-Path $ReposDir ".gitmodules"
+  $isSubmodule = (Test-Path $gitmodulesPath) -and (Select-String -Path $gitmodulesPath -Pattern 'path = dojo' -Quiet)
+  if ((Test-Path (Join-Path $strayDojo ".git")) -and (-not $isSubmodule)) {
+    $originUrl = (git -C $strayDojo remote get-url origin 2>$null)
+    if ($originUrl -match 'Cyb3rRon1n/dojo') {
+      $strayDest = Join-Path $ReposDir "dojo.stray-$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())"
+      try {
+        Move-Item $strayDojo $strayDest -Force -ErrorAction Stop
+        Log "moved stray clone $strayDojo -> $strayDest (dojo already lives at $DojoDir)"
+      } catch {
+        Warn "found a stray dojo clone at $strayDojo (dojo already lives at $DojoDir) but couldn't move it"
+      }
+    }
+  }
 } elseif ($ReposSlug) {
   Log "cloning repos workspace -> $ReposDir"
   New-Item -ItemType Directory -Path (Split-Path $ReposDir -Parent) -Force | Out-Null
