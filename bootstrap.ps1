@@ -508,6 +508,14 @@ if (Get-Command openclaw -ErrorAction SilentlyContinue) {
   SkipStep "OpenClaw plugins" "openclaw missing"
 }
 
+# $TotalSteps is a hand-maintained constant (self-counting it would mean
+# parsing this script's own if/elseif/else branches for distinct step
+# labels -- more fragile than the drift it'd prevent). Catch drift here
+# instead of letting the "(n/N)" progress display silently go wrong again.
+if ($script:StepN -ne $TotalSteps) {
+  Warn "TotalSteps=$TotalSteps but $($script:StepN) steps actually ran -- update the `$TotalSteps constant near the top of this script"
+}
+
 # ---------------------------------------------------------------------------
 # 7. Verify
 # ---------------------------------------------------------------------------
