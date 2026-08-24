@@ -226,8 +226,15 @@ if [[ -z "$REPOS_SLUG" && ! -d "$REPOS_DIR/.git" && -t 0 ]]; then
   read -rp "GitHub owner/repo for your multi-repo workspace${default_slug:+ [$default_slug]}, blank to skip: " REPOS_SLUG
   [[ -z "$REPOS_SLUG" ]] && REPOS_SLUG="$default_slug"
 fi
-REPOS_REPO="git@github.com:${REPOS_SLUG}.git"
-REPOS_HTTPS="https://github.com/${REPOS_SLUG}.git"
+if [[ "$REPOS_SLUG" == *"://"* || "$REPOS_SLUG" == git@* ]]; then
+  # Already a full URL (someone pasted one instead of owner/repo shorthand)
+  # — use it as-is rather than mangling it into git@github.com:https://....
+  REPOS_REPO="$REPOS_SLUG"
+  REPOS_HTTPS="$REPOS_SLUG"
+else
+  REPOS_REPO="git@github.com:${REPOS_SLUG}.git"
+  REPOS_HTTPS="https://github.com/${REPOS_SLUG}.git"
+fi
 
 # Node.js/npm aren't preinstalled on every fresh machine (e.g. minimal distro
 # images) — claude/copilot/codex installs below all need npm. Bootstrap
