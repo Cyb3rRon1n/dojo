@@ -5,8 +5,8 @@
 # CLI, OpenClaw, and Cursor, each wired up with whatever token-optimization
 # each
 # one supports (RTK hooks, graphify, and — for Claude Code + opencode only,
-# for now — ponytail/token-optimizer) + the projects/github/repos workspace,
-# cloned and submodule-linked.
+# for now — ponytail/token-optimizer) + (optionally) your own multi-repo
+# GitHub workspace, cloned and submodule-linked into projects/github/repos.
 #
 #     bash <(curl -fsSL https://raw.githubusercontent.com/Cyb3rRon1n/dojo/main/install.sh)
 #
@@ -14,9 +14,12 @@
 # manual step this doesn't cover is GitHub auth (SSH key or HTTPS login) —
 # do that first, or this script will tell you to at the end.
 #
-# Interactive runs prompt for which tools to install. To skip the prompt
-# (e.g. scripted/headless), set DOJO_TOOLS to a comma list:
-#     DOJO_TOOLS=opencode,claude bash <(curl -fsSL .../install.sh)
+# Interactive runs prompt for which tools to install, and (on a machine
+# that hasn't cloned one yet) for your own owner/repo to use as the
+# multi-repo workspace — leave that blank to skip it entirely. To skip
+# either prompt (e.g. scripted/headless), set:
+#     DOJO_TOOLS=opencode,claude DOJO_REPOS_REPO=you/your-workspace \
+#       bash <(curl -fsSL .../install.sh)
 #
 set -euo pipefail
 
@@ -116,8 +119,6 @@ DOJO_DIR="${DOJO_DIR:-$HOME/dojo}"
 DOJO_REPO="git@github.com:Cyb3rRon1n/dojo.git"
 DOJO_HTTPS="https://github.com/Cyb3rRon1n/dojo.git"
 REPOS_DIR="${REPOS_DIR:-$HOME/projects/github/repos}"
-REPOS_REPO="git@github.com:Cyb3rRon1n/foundry.git"
-REPOS_HTTPS="https://github.com/Cyb3rRon1n/foundry.git"
 LOCAL_BIN="$HOME/.local/bin"
 OPENCODE_BIN="$HOME/.opencode/bin"
 NPM_GLOBAL="$HOME/.npm-global"
@@ -206,6 +207,27 @@ else
   SELECTED_TOOLS=("${ALL_TOOLS[@]}")
 fi
 want() { printf '%s\n' "${SELECTED_TOOLS[@]}" | grep -qx "$1"; }
+
+# ---------------------------------------------------------------------------
+# Multi-repo workspace — *your* GitHub org/repo, not dojo's. This used to be
+# hardcoded to the dojo author's own workspace repo, which meant anyone else
+# running this installer got the author's personal projects cloned onto
+# their machine. Ask instead. DOJO_REPOS_REPO=owner/repo skips the prompt
+# for scripted/headless runs; leaving it blank (prompt or env) skips this
+# whole step — no multi-repo workspace is a perfectly fine answer.
+# ---------------------------------------------------------------------------
+REPOS_SLUG="${DOJO_REPOS_REPO:-}"
+if [[ -z "$REPOS_SLUG" && ! -d "$REPOS_DIR/.git" && -t 0 ]]; then
+  default_slug=""
+  if command -v gh >/dev/null 2>&1; then
+    default_owner="$(gh api user --jq .login 2>/dev/null || true)"
+    [[ -n "$default_owner" ]] && default_slug="$default_owner/foundry"
+  fi
+  read -rp "GitHub owner/repo for your multi-repo workspace${default_slug:+ [$default_slug]}, blank to skip: " REPOS_SLUG
+  [[ -z "$REPOS_SLUG" ]] && REPOS_SLUG="$default_slug"
+fi
+REPOS_REPO="git@github.com:${REPOS_SLUG}.git"
+REPOS_HTTPS="https://github.com/${REPOS_SLUG}.git"
 
 # Node.js/npm aren't preinstalled on every fresh machine (e.g. minimal distro
 # images) — claude/copilot/codex installs below all need npm. Bootstrap
@@ -392,26 +414,29 @@ log "running bootstrap"
 if [[ -d "$REPOS_DIR/.git" ]]; then
   log "updating $REPOS_DIR"
   safe_git_pull "$REPOS_DIR" "repos" || true
-else
+  safe_submodule_update "$REPOS_DIR" || true
+
+  # dojo's canonical home is $DOJO_DIR ($HOME/dojo) — a stray `git clone` of
+  # it dropped straight into the multi-repo workspace (not registered as one
+  # of its submodules) is just confusing clutter, so move it aside rather
+  # than leaving two copies of the same repo around.
+  if [[ -d "$REPOS_DIR/dojo/.git" ]] \
+    && ! grep -qF 'path = dojo' "$REPOS_DIR/.gitmodules" 2>/dev/null \
+    && { git -C "$REPOS_DIR/dojo" remote get-url origin 2>/dev/null | grep -qF 'Cyb3rRon1n/dojo'; }; then
+    stray_dest="$REPOS_DIR/dojo.stray-$(date +%s)"
+    if mv "$REPOS_DIR/dojo" "$stray_dest"; then
+      log "moved stray clone $REPOS_DIR/dojo -> $stray_dest (dojo already lives at $DOJO_DIR)"
+    else
+      warn "found a stray dojo clone at $REPOS_DIR/dojo (dojo already lives at $DOJO_DIR) but couldn't move it"
+    fi
+  fi
+elif [[ -n "$REPOS_SLUG" ]]; then
   log "cloning repos workspace -> $REPOS_DIR"
   mkdir -p "$(dirname "$REPOS_DIR")"
   git clone "$REPOS_REPO" "$REPOS_DIR" 2>/dev/null || git clone "$REPOS_HTTPS" "$REPOS_DIR" || die "repos clone failed"
-fi
-safe_submodule_update "$REPOS_DIR" || true
-
-# dojo's canonical home is $DOJO_DIR ($HOME/dojo) — a stray `git clone` of it
-# dropped straight into the multi-repo workspace (not registered as one of
-# its submodules) is just confusing clutter, so move it aside rather than
-# leaving two copies of the same repo around.
-if [[ -d "$REPOS_DIR/dojo/.git" ]] \
-  && ! grep -qF 'path = dojo' "$REPOS_DIR/.gitmodules" 2>/dev/null \
-  && { git -C "$REPOS_DIR/dojo" remote get-url origin 2>/dev/null | grep -qF 'Cyb3rRon1n/dojo'; }; then
-  stray_dest="$REPOS_DIR/dojo.stray-$(date +%s)"
-  if mv "$REPOS_DIR/dojo" "$stray_dest"; then
-    log "moved stray clone $REPOS_DIR/dojo -> $stray_dest (dojo already lives at $DOJO_DIR)"
-  else
-    warn "found a stray dojo clone at $REPOS_DIR/dojo (dojo already lives at $DOJO_DIR) but couldn't move it"
-  fi
+  safe_submodule_update "$REPOS_DIR" || true
+else
+  log "no multi-repo workspace configured — skipping (set DOJO_REPOS_REPO=owner/repo to add one later)"
 fi
 
 log "done. Restart opencode / Claude Code / Copilot CLI / Codex CLI / Aider / Antigravity (agy) / OpenClaw / Cursor / Cline / Qwen / Goose / Pi — you're ready to launch in any repo."
