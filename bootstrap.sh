@@ -457,7 +457,7 @@ echo "  codex:                $(command -v codex >/dev/null && echo installed ||
 echo "  aider:                $(command -v aider >/dev/null && echo installed || echo MISSING)"
 echo "  openclaw:             $(command -v openclaw >/dev/null && echo installed || echo MISSING)"
 echo "  rtk:                  $(command -v rtk >/dev/null && rtk --version | head -1 || echo MISSING)"
-echo "  graphify:              $(command -v graphify >/dev/null && graphify --version | head -1 || echo MISSING)"
+echo "  graphify:             $(command -v graphify >/dev/null && graphify --version | head -1 || echo MISSING)"
 
 if [ "${GITHUB_MCP_NEW:-0}" = 1 ] && command -v claude >/dev/null 2>&1; then
   echo "[dojo]"
