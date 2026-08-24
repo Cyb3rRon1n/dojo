@@ -25,38 +25,48 @@ warn() { printf '[dojo][warn] %s\n' "$*" >&2; }
 die()  { printf '[dojo][error] %s\n' "$*" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
-# safe_git_pull <dir> <label> — pull --ff-only, self-healing the most common
-# failure mode we see: a past root-run (accidental sudo, a root-owned tool)
-# left some objects under <dir>/.git owned by root, so a normal user's git
-# can no longer write new objects there ("insufficient permission ... .git/
-# objects"). Detect that specifically, offer to chown it back, retry once.
+# fix_git_object_perms <dir> — the most common self-inflicted failure we see:
+# a past root-run (accidental sudo, a root-owned tool) left some objects
+# under <dir>/.git* owned by root, so a normal user's git can no longer
+# write new objects there ("insufficient permission ... .git/objects"),
+# including inside submodule worktrees under <dir>. Offer to chown it back.
+# Returns 0 if it fixed something (caller should retry), 1 otherwise.
+# ---------------------------------------------------------------------------
+fix_git_object_perms() {
+  local dir="$1" bad
+  bad="$(find "$dir" -path '*/.git*' ! -user "$(id -u)" 2>/dev/null | head -5)"
+  [[ -n "$bad" ]] || return 1
+  warn "$dir: files under .git are owned by another user (likely a past 'sudo' run), blocking normal git operations:"
+  printf '%s\n' "$bad" | sed 's/^/[dojo][warn]   /' >&2
+  if [[ -t 0 ]] && command -v sudo >/dev/null 2>&1; then
+    read -r -p "[dojo] fix with 'sudo chown -R $(id -un):$(id -gn) $dir'? [y/N] " fix_reply || fix_reply="n"
+    if [[ "$fix_reply" =~ ^[Yy] ]] && sudo chown -R "$(id -u):$(id -g)" "$dir"; then
+      return 0
+    fi
+  fi
+  warn "fix manually with: sudo chown -R $(id -un):$(id -gn) $dir"
+  return 1
+}
+
+# ---------------------------------------------------------------------------
+# safe_git_pull <dir> <label> — pull --ff-only, self-healing via
+# fix_git_object_perms above, and via `git stash` when a prior interrupted/
+# permission-blocked pull left local working-tree diffs blocking --ff-only
+# (git stash is the safe, reversible fix here — never reset --hard).
 # ---------------------------------------------------------------------------
 safe_git_pull() {
-  local dir="$1" label="$2" out bad
+  local dir="$1" label="$2" out
 
   if out="$(git -C "$dir" pull --ff-only 2>&1)"; then
     return 0
   fi
 
   if printf '%s' "$out" | grep -qi 'insufficient permission\|permission denied'; then
-    bad="$(find "$dir" -path '*/.git*' ! -user "$(id -u)" 2>/dev/null | head -5)"
-    if [[ -n "$bad" ]]; then
-      warn "$label: files under .git are owned by another user (likely a past 'sudo' run), blocking normal git operations:"
-      printf '%s\n' "$bad" | sed 's/^/[dojo][warn]   /' >&2
-      if [[ -t 0 ]] && command -v sudo >/dev/null 2>&1; then
-        read -r -p "[dojo] fix with 'sudo chown -R $(id -un):$(id -gn) $dir'? [y/N] " fix_reply || fix_reply="n"
-        if [[ "$fix_reply" =~ ^[Yy] ]] && sudo chown -R "$(id -u):$(id -g)" "$dir"; then
-          out="$(git -C "$dir" pull --ff-only 2>&1)" && { log "$label: ownership fixed, updated"; return 0; }
-        fi
-      else
-        warn "fix manually with: sudo chown -R $(id -un):$(id -gn) $dir"
-      fi
+    if fix_git_object_perms "$dir"; then
+      out="$(git -C "$dir" pull --ff-only 2>&1)" && { log "$label: ownership fixed, updated"; return 0; }
     fi
   fi
 
-  # A prior interrupted/permission-blocked pull can leave the working tree
-  # with local diffs (e.g. a partially-applied merge) that block --ff-only.
-  # git stash is the safe, reversible fix — never reset --hard.
   if printf '%s' "$out" | grep -qi 'overwritten by merge\|commit your changes or stash'; then
     warn "$label: local changes in the working tree conflict with the update:"
     printf '%s\n' "$out" | grep '^\s' | sed 's/^/[dojo][warn]   /' >&2
@@ -73,6 +83,31 @@ safe_git_pull() {
   fi
 
   warn "$label pull failed"
+  printf '%s\n' "$out" | tail -10 >&2
+  return 1
+}
+
+# ---------------------------------------------------------------------------
+# safe_submodule_update <dir> — `submodule update --init --recursive`,
+# self-healing via fix_git_object_perms (submodule fetches write into
+# <dir>/.git/modules/<name>/objects, which hits the exact same root-owned-
+# object failure the top-level pull above does, but is a separate git
+# invocation so needs its own guard).
+# ---------------------------------------------------------------------------
+safe_submodule_update() {
+  local dir="$1" out
+  if out="$(git -C "$dir" submodule update --init --recursive 2>&1)"; then
+    return 0
+  fi
+  if printf '%s' "$out" | grep -qi 'insufficient permission\|permission denied'; then
+    if fix_git_object_perms "$dir"; then
+      if out="$(git -C "$dir" submodule update --init --recursive 2>&1)"; then
+        log "repos submodules: ownership fixed, updated"
+        return 0
+      fi
+    fi
+  fi
+  warn "submodule update failed"
   printf '%s\n' "$out" | tail -10 >&2
   return 1
 }
@@ -339,7 +374,7 @@ fi
 # ---------------------------------------------------------------------------
 if [[ -d "$DOJO_DIR/.git" ]]; then
   log "updating $DOJO_DIR"
-  safe_git_pull "$DOJO_DIR" "dojo"
+  safe_git_pull "$DOJO_DIR" "dojo" || true
 else
   log "cloning dojo -> $DOJO_DIR"
   git clone "$DOJO_REPO" "$DOJO_DIR" 2>/dev/null || git clone "$DOJO_HTTPS" "$DOJO_DIR" || die "clone failed"
@@ -356,13 +391,13 @@ log "running bootstrap"
 # ---------------------------------------------------------------------------
 if [[ -d "$REPOS_DIR/.git" ]]; then
   log "updating $REPOS_DIR"
-  safe_git_pull "$REPOS_DIR" "repos"
+  safe_git_pull "$REPOS_DIR" "repos" || true
 else
   log "cloning repos workspace -> $REPOS_DIR"
   mkdir -p "$(dirname "$REPOS_DIR")"
   git clone "$REPOS_REPO" "$REPOS_DIR" 2>/dev/null || git clone "$REPOS_HTTPS" "$REPOS_DIR" || die "repos clone failed"
 fi
-git -C "$REPOS_DIR" submodule update --init --recursive || warn "submodule update failed"
+safe_submodule_update "$REPOS_DIR" || true
 
 # dojo's canonical home is $DOJO_DIR ($HOME/dojo) — a stray `git clone` of it
 # dropped straight into the multi-repo workspace (not registered as one of
