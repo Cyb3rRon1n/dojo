@@ -6,6 +6,7 @@
 set -euo pipefail
 
 DOJO_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+REPOS_DIR="${REPOS_DIR:-$HOME/projects/github/repos}"
 
 warn() { printf '[dojo][warn] %s\n' "$*" >&2; }
 
@@ -41,7 +42,7 @@ safe_git_pull() {
     return 0
   fi
 
-  if printf '%s' "$out" | grep -qi 'insufficient permission\|permission denied'; then
+  if printf '%s' "$out" | grep -qi 'insufficient permission\|permission denied' && ! printf '%s' "$out" | grep -qi 'publickey'; then
     if fix_git_object_perms "$dir"; then
       out="$(git -C "$dir" pull --ff-only 2>&1)" && { echo "[dojo] $label: ownership fixed, updated"; return 0; }
     fi
@@ -67,12 +68,51 @@ safe_git_pull() {
   return 1
 }
 
+# ---------------------------------------------------------------------------
+# safe_submodule_update <dir> — same self-healing as install.sh's copy,
+# including the SSH-pubkey-to-HTTPS fallback for submodule URLs (git has no
+# such fallback itself, and .gitmodules records whichever URL form the
+# workspace repo happened to use).
+# ---------------------------------------------------------------------------
+safe_submodule_update() {
+  local dir="$1" out
+
+  if out="$(git -C "$dir" submodule update --init --recursive 2>&1)"; then
+    return 0
+  fi
+
+  if printf '%s' "$out" | grep -qiE 'permission denied \(publickey\)|could not read from remote repository'; then
+    if [[ -f "$dir/.gitmodules" ]] && grep -q 'git@github\.com:' "$dir/.gitmodules"; then
+      warn "submodule SSH auth failed — rewriting .gitmodules to HTTPS and retrying"
+      sed -i.bak 's#git@github\.com:#https://github.com/#g' "$dir/.gitmodules"
+      git -C "$dir" submodule sync >/dev/null 2>&1
+      if out="$(git -C "$dir" submodule update --init --recursive 2>&1)"; then
+        echo "[dojo] repos submodules: switched to HTTPS, updated"
+        rm -f "$dir/.gitmodules.bak"
+        return 0
+      fi
+    fi
+  elif printf '%s' "$out" | grep -qi 'insufficient permission\|permission denied'; then
+    if fix_git_object_perms "$dir"; then
+      if out="$(git -C "$dir" submodule update --init --recursive 2>&1)"; then
+        echo "[dojo] repos submodules: ownership fixed, updated"
+        return 0
+      fi
+    fi
+  fi
+
+  warn "submodule update failed"
+  printf '%s\n' "$out" | tail -10 >&2
+  return 1
+}
+
 usage() {
   cat <<'EOF'
 usage: dojo <command>
 
   update   git pull + re-run bootstrap.sh (restore/refresh the whole stack)
   install  re-run install.sh (one-shot build-out, idempotent — same as fresh machine)
+  repos    git pull + submodule update for the projects/github/repos workspace
   status   versions, GitHub auth, whether you're behind origin
   doctor   verify every wiring point is intact; exit 1 if anything is broken
   tokens   live token usage / cache refresh / context-fill thresholds (--one-line for compact output)
@@ -305,6 +345,17 @@ PY
   return "$fail"
 }
 
+cmd_repos() {
+  if [[ ! -d "$REPOS_DIR/.git" ]]; then
+    echo "[dojo] no workspace at $REPOS_DIR yet — run 'dojo install' to set one up (it'll ask for your GitHub owner/repo)." >&2
+    return 1
+  fi
+  local ok=0
+  safe_git_pull "$REPOS_DIR" "repos" || ok=1
+  safe_submodule_update "$REPOS_DIR" || ok=1
+  return "$ok"
+}
+
 cmd="${1:-}"
 case "$cmd" in
   update)
@@ -313,6 +364,9 @@ case "$cmd" in
     ;;
   install)
     exec "$DOJO_DIR/install.sh"
+    ;;
+  repos)
+    cmd_repos
     ;;
   status)
     cmd_status
