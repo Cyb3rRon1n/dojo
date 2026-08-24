@@ -364,6 +364,21 @@ else
 fi
 git -C "$REPOS_DIR" submodule update --init --recursive || warn "submodule update failed"
 
+# dojo's canonical home is $DOJO_DIR ($HOME/dojo) — a stray `git clone` of it
+# dropped straight into the multi-repo workspace (not registered as one of
+# its submodules) is just confusing clutter, so move it aside rather than
+# leaving two copies of the same repo around.
+if [[ -d "$REPOS_DIR/dojo/.git" ]] \
+  && ! grep -qF 'path = dojo' "$REPOS_DIR/.gitmodules" 2>/dev/null \
+  && { git -C "$REPOS_DIR/dojo" remote get-url origin 2>/dev/null | grep -qF 'Cyb3rRon1n/dojo'; }; then
+  stray_dest="$REPOS_DIR/dojo.stray-$(date +%s)"
+  if mv "$REPOS_DIR/dojo" "$stray_dest"; then
+    log "moved stray clone $REPOS_DIR/dojo -> $stray_dest (dojo already lives at $DOJO_DIR)"
+  else
+    warn "found a stray dojo clone at $REPOS_DIR/dojo (dojo already lives at $DOJO_DIR) but couldn't move it"
+  fi
+fi
+
 log "done. Restart opencode / Claude Code / Copilot CLI / Codex CLI / Aider / Antigravity (agy) / OpenClaw / Cursor / Cline / Qwen / Goose / Pi — you're ready to launch in any repo."
 if want claude; then
   log "one manual step, once per machine: open Claude Code and run '/mcp', pick 'github', authorize — that wires up GitHub Issues/PRs tooling for every session after"
