@@ -133,6 +133,18 @@ if command -v rtk >/dev/null 2>&1; then
   fi
 fi
 
+if command -v gh >/dev/null 2>&1; then
+  # Check if already authenticated
+  if gh auth status >/dev/null 2>&1; then
+    skip_step "gh authentication" "already logged in"
+  else
+    run_step "gh authentication" bash -c 'gh auth login --hostname github.com' \
+      || warn "gh auth login failed - GitHub MCP may not work"
+  fi
+else
+  skip_step "gh binary" "install: brew install gh (macOS) or sudo apt-get install gh (Ubuntu)"
+fi
+
 if command -v graphify >/dev/null 2>&1; then
   skip_step "graphify binary"
 elif command -v uv >/dev/null 2>&1; then
@@ -177,6 +189,7 @@ profile_block() {
 $PROFILE_MARKER
 # Managed by dojo (bootstrap.sh) — do not edit by hand.
 export PATH="\$HOME/.local/bin:\$HOME/.opencode/bin:\$HOME/.npm-global/bin:\$PATH"
+export GITHUB_PERSONAL_ACCESS_TOKEN="\$(gh auth token 2>/dev/null || echo '')"
 [ -s "\$HOME/.nvm/nvm.sh" ] && . "\$HOME/.nvm/nvm.sh"
 
 # Shared ssh-agent (stable socket) so every shell — and tools launched from
