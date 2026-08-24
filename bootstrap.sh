@@ -34,7 +34,7 @@ die()  { printf '[dojo][error] %s\n' "$*" >&2; exit 1; }
 # banner, etc.) swallowed unless that step actually fails, in which case the
 # tail of its output prints so you can debug it.
 # ---------------------------------------------------------------------------
-TOTAL_STEPS=20
+TOTAL_STEPS=23
 STEP_N=0
 step() {
   STEP_N=$((STEP_N + 1))
