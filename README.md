@@ -101,7 +101,7 @@ Wired into both Claude Code (`claude mcp add --scope user`) and opencode
 | Server | What it does | Auth |
 |---|---|---|
 | [Serena](https://github.com/oraios/serena) | Symbol-level semantic code tools (find/rename/references via LSP, 40+ languages) — big token saver on large repos. Installed via uv; opencode uses it with `--context ide` | none (local) |
-| [GitHub](https://github.com/github/github-mcp-server) (remote) | Official Issues/PRs/Actions/repos tooling, zero local deps | one-time interactive: `/mcp` in Claude Code or `opencode mcp auth github` — its OAuth server doesn't support dynamic client registration |
+| [GitHub](https://github.com/github/github-mcp-server) (remote) | Official Issues/PRs/Actions/repos tooling, zero local deps | PAT header (`GITHUB_PERSONAL_ACCESS_TOKEN`, from `gh auth token`) — its OAuth server doesn't support dynamic client registration, so `/mcp`'s interactive login doesn't work here |
 | [Context7](https://github.com/upstash/context7) (remote) | Fresh version-specific library docs on demand | none |
 
 MCP servers add tool definitions to context — that's the point, but if you
