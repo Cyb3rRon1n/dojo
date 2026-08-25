@@ -313,11 +313,13 @@ if command -v claude >/dev/null 2>&1; then
 
   # Shared MCP servers. Neither `serena setup` nor `claude mcp add` is
   # idempotent (both exit non-zero on "already exists"), so probe first.
-  # github/context7 are remote HTTP servers — no local deps. GitHub needs a
-  # one-time interactive auth (/mcp in Claude Code) since its OAuth server
-  # doesn't support dynamic client registration; flag a fresh registration
-  # so the end-of-run verification can tell the user exactly that.
-  claude mcp get github >/dev/null 2>&1 || GITHUB_MCP_NEW=1
+  # github/context7 are remote HTTP servers — no local deps. GitHub's OAuth
+  # server doesn't support dynamic client registration, which is what
+  # Claude Code's `/mcp` login flow relies on (fails with "Incompatible
+  # auth server"), so github auths via a static PAT header instead
+  # (GITHUB_PERSONAL_ACCESS_TOKEN, exported above from `gh auth token`) —
+  # same approach opencode.jsonc already uses. Re-registered every run so a
+  # stale OAuth-style entry from an older dojo version self-heals.
   if ! claude mcp get serena >/dev/null 2>&1; then
     if command -v serena >/dev/null 2>&1; then
       run_step "Serena MCP for Claude Code" serena setup claude-code || warn "serena claude setup failed"
@@ -328,7 +330,8 @@ if command -v claude >/dev/null 2>&1; then
     skip_step "Serena MCP for Claude Code" "(already registered)"
   fi
   run_step "MCP servers for Claude Code (github, context7)" bash -c '
-    claude mcp get github   >/dev/null 2>&1 || claude mcp add --scope user --transport http github   https://api.githubcopilot.com/mcp/ >/dev/null
+    claude mcp remove github -s user >/dev/null 2>&1
+    claude mcp add --scope user --transport http github   https://api.githubcopilot.com/mcp/ --header "Authorization: Bearer \${GITHUB_PERSONAL_ACCESS_TOKEN}" >/dev/null
     claude mcp get context7 >/dev/null 2>&1 || claude mcp add --scope user --transport http context7 https://mcp.context7.com/mcp/     >/dev/null
   ' || warn "mcp server registration failed"
 else
@@ -479,12 +482,5 @@ echo "  aider:                $(command -v aider >/dev/null && echo installed ||
 echo "  openclaw:             $(command -v openclaw >/dev/null && echo installed || echo MISSING)"
 echo "  rtk:                  $(command -v rtk >/dev/null && rtk --version | head -1 || echo MISSING)"
 echo "  graphify:             $(command -v graphify >/dev/null && graphify --version | head -1 || echo MISSING)"
-
-if [ "${GITHUB_MCP_NEW:-0}" = 1 ] && command -v claude >/dev/null 2>&1; then
-  echo "[dojo]"
-  echo "[dojo] ONE MANUAL STEP (once per machine): the GitHub MCP server needs an"
-  echo "[dojo]   interactive login. Open Claude Code, type /mcp, pick 'github',"
-  echo "[dojo]   and authorize. opencode users: run 'opencode mcp auth github'."
-fi
 
 echo "[dojo] done. Restart opencode and Claude Code on this machine."

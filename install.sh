@@ -470,9 +470,6 @@ else
 fi
 
 log "done. Restart opencode / Claude Code / Copilot CLI / Codex CLI / Aider / Antigravity (agy) / OpenClaw / Cursor / Cline / Qwen / Goose / Pi — you're ready to launch in any repo."
-if want claude; then
-  log "one manual step, once per machine: open Claude Code and run '/mcp', pick 'github', authorize — that wires up GitHub Issues/PRs tooling for every session after"
-fi
 if [[ "$GIT_AUTH_OK" -eq 0 ]]; then
   warn "reminder: no GitHub auth was detected, so pushes will fail until you run"
   warn "  ssh-keygen -t ed25519 -C you@example.com  (then add the key on GitHub)"
