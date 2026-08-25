@@ -1,4 +1,8 @@
-<img src="assets/dojo-lockup.svg" alt="dojo" width="420">
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Cyb3rRon1n/dojo/main/assets/dojo-banner.svg"
+       alt="dojo — warm up before you spar"
+       style="max-width: 100%; height: auto;">
+</p>
 
 # dojo
 
