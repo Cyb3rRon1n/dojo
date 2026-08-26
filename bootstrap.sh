@@ -239,6 +239,16 @@ if command -v npm >/dev/null 2>&1; then
   # isn't accepted for project-scoped installs).
   run_step "opencode plugin dependencies" bash -c "cd '$OCONF' && npm install --legacy-peer-deps" \
     || warn "opencode plugin install failed"
+
+  # codegraph is an optional MCP server bundled inside oh-my-openagent.
+  # Its native dependency (@colbymchenry/codegraph) is an optionalDependency
+  # that npm silently skips when the platform package isn't available or the
+  # install is partial.  Install it explicitly so /mcp lists codegraph.
+  CG_DIR="$OCONF/node_modules/oh-my-openagent/packages/omo-codex/plugin"
+  if [ -d "$CG_DIR" ]; then
+    run_step "codegraph native dep" bash -c "cd '$CG_DIR' && npm install @colbymchenry/codegraph --no-save" \
+      || warn "codegraph install failed — /mcp codegraph will be missing"
+  fi
 else
   skip_step "opencode plugin dependencies" "npm missing"
   # Local fallback plugin: the TUI still gets live per-session token usage
