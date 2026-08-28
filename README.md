@@ -114,13 +114,18 @@ run lean sessions, disable what you don't use per project
 
 ## Commands
 
-Once installed, a `dojo` command is on your `PATH`:
+Once installed, a `dojo` command is on your `PATH`. Run it with **no
+arguments** (or `dojo menu`) to open a whiptail Main Menu covering guided
+setup, install, update, login, services, workspace, status/doctor, and the
+token readout. For scripted / headless use, the same actions are single
+subcommands, so nothing needs the menu:
 
 ```bash
+dojo install [--tools LIST] [--repos SLUG]  # install tools + wire everything up
+dojo update   # git pull + re-run the whole wire-up, from wherever you cloned it
+dojo repos    # git pull + submodule update for the projects/github/repos workspace
 dojo status   # versions, GitHub auth, whether you're behind origin
 dojo doctor   # verify every wiring point (PATH, symlinks, hooks, plugins); exit 1 if broken
-dojo update   # git pull + re-run bootstrap.sh, from wherever you cloned it
-dojo install  # re-run install.sh (idempotent) — same one-shot as a fresh machine
 dojo tokens   # live token usage / cache refresh / context-fill thresholds
 ```
 
@@ -229,6 +234,8 @@ tests/
 .github/workflows/
   ci.yml             # py_compile + bats + shellcheck on main/PR
 assets/               # dojo's own logo/banner (mark, lockup, social preview)
+lib.sh                # the engine: install + wire-up + status/doctor/repos helpers (no side effects on source)
+menu.sh               # whiptail Main Menu (install / update / login / services / workspace)
 bootstrap.sh          # idempotent setup (plugins, hooks, configs, per tool)
 bootstrap.ps1         # same, native Windows port (PowerShell, run by install.ps1)
 install.sh            # one-shot fresh-machine build-out (installs all 8 tools, calls bootstrap.sh, then clones repos/)
