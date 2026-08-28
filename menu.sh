@@ -25,27 +25,30 @@ source "$DOJO_DIR/lib.sh"
 BACKTITLE="dojo - AI Workstation Setup"
 
 # --------------------------------------------------------------------------
-# Theme (same named-color set whiptail/newt exposes; no arbitrary hex).
+# Theme — dojo's brand (warm ink/paper/brass/seal-red) mapped onto whiptail's
+# named-color set (whiptail/newt exposes names only, no arbitrary hex):
+#   ink #1a1613 -> black · paper #f3ece0 -> white
+#   brass #a9905f -> yellow · seal red #c23b28 -> red
 # --------------------------------------------------------------------------
 export NEWT_COLORS='
 root=white,black
-border=black,blue
-window=white,blue
+border=white,black
+window=white,black
 shadow=black,black
-title=yellow,blue
+title=yellow,black
 button=black,yellow
-actbutton=white,black
-checkbox=black,blue
-actcheckbox=black,yellow
-entry=black,blue
-label=black,blue
-listbox=black,blue
-actlistbox=white,yellow
-sellistbox=white,blue
-actsellistbox=white,yellow
-textbox=black,blue
-helpline=white,black
-roottext=white,black
+actbutton=white,red
+checkbox=white,black
+actcheckbox=black,red
+entry=black,black
+label=white,black
+listbox=white,black
+actlistbox=black,red
+sellistbox=white,black
+actsellistbox=white,red
+textbox=white,black
+helpline=yellow,black
+roottext=yellow,black
 '
 
 if ! declare -F whiptail >/dev/null; then
