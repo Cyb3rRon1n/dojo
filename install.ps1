@@ -103,12 +103,18 @@ foreach ($p in @($LocalBin, $OpencodeBin, (Join-Path $NpmGlobal "bin"))) {
 # ---------------------------------------------------------------------------
 # 0.5. GitHub CLI (gh) -- not part of Windows by default, yet the auth check
 #      and the 'gh auth login' advice below both assume it exists. Install it
-#      (winget) when missing so that advice is actually followable.
+#      (winget) when missing, refresh PATH in-process (winget installs onto
+#      the registry User/Machine PATH, not the running session), then
+#      re-check so the auth step below finds it in the same run.
 # ---------------------------------------------------------------------------
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
   if (Get-Command winget -ErrorAction SilentlyContinue) {
     Log "installing GitHub CLI (gh) via winget"
     winget install --id GitHub.cli --silent --accept-package-agreements --accept-source-agreements *>$null
+    $env:PATH = [Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [Environment]::GetEnvironmentVariable("PATH", "User")
+    if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+      Warn "gh still not on PATH after install -- open a new terminal, then run 'gh auth login'"
+    }
   } else {
     Warn "gh not installed and winget unavailable -- install GitHub CLI from https://cli.github.com before using 'gh auth login'"
   }
