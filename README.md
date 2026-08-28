@@ -26,11 +26,13 @@ bash <(curl -fsSL https://raw.githubusercontent.com/Cyb3rRon1n/dojo/main/install
 powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/Cyb3rRon1n/dojo/main/install.ps1 | iex"
 ```
 
-Installs whichever of the eight tools you don't already have, wires up
-whatever optimizations each one supports, clones `~/projects/github/repos`,
-and prompts for GitHub auth (SSH key or `gh auth login`) if it's missing.
-No sudo/elevation required for any of it. Safe to re-run later — every step
-is a no-op if already done.
+Installs whichever of the tools you don't already have (it also installs the
+GitHub CLI `gh` if missing, so `gh auth login` works), wires up whatever
+optimizations each one supports, clones `~/projects/github/repos`, and
+prompts for GitHub auth (SSH key or `gh auth login`) if it's missing. When it
+finishes it drops you straight into the interactive `dojo` menu — or run
+`dojo` anytime to open it. No sudo/elevation required for any of it. Safe to
+re-run later — every step is a no-op if already done.
 
 **Windows notes** (native PowerShell, not WSL):
 - The `dojo` CLI itself (`dojo update`/`status`/`doctor`/`tokens`) is a bash

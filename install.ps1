@@ -101,6 +101,20 @@ foreach ($p in @($LocalBin, $OpencodeBin, (Join-Path $NpmGlobal "bin"))) {
 }
 
 # ---------------------------------------------------------------------------
+# 0.5. GitHub CLI (gh) -- not part of Windows by default, yet the auth check
+#      and the 'gh auth login' advice below both assume it exists. Install it
+#      (winget) when missing so that advice is actually followable.
+# ---------------------------------------------------------------------------
+if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+  if (Get-Command winget -ErrorAction SilentlyContinue) {
+    Log "installing GitHub CLI (gh) via winget"
+    winget install --id GitHub.cli --silent --accept-package-agreements --accept-source-agreements *>$null
+  } else {
+    Warn "gh not installed and winget unavailable -- install GitHub CLI from https://cli.github.com before using 'gh auth login'"
+  }
+}
+
+# ---------------------------------------------------------------------------
 # 0. GitHub auth -- the one thing this script can't do for you. Detect it up
 #    front so clone/push failures later point back here instead of confusing
 #    you.

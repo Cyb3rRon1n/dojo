@@ -541,6 +541,13 @@ wire_up_runtime_tools() {
     fi
   fi
 
+  # gh (GitHub CLI) — needed for GitHub auth, the GitHub MCP server, and
+  # `gh auth login`. Install it when missing instead of asking the user to,
+  # so the auth steps below are actually followable.
+  if ! command -v gh >/dev/null 2>&1; then
+    run_step "gh binary" bash -c 'curl -fsSL https://cli.github.com/install.sh | sh' \
+      || warn "gh install failed — GitHub MCP + 'gh auth login' won't work (install gh manually: brew/apt/winget)"
+  fi
   # github auth (for the GitHub MCP server)
   if command -v gh >/dev/null 2>&1; then
     if gh auth status >/dev/null 2>&1; then
@@ -549,8 +556,6 @@ wire_up_runtime_tools() {
       run_step "gh authentication" bash -c 'gh auth login --hostname github.com' \
         || warn "gh auth login failed - GitHub MCP may not work"
     fi
-  else
-    skip_step "gh binary" "install: brew install gh (macOS) or sudo apt-get install gh (Ubuntu)"
   fi
 
   # graphify

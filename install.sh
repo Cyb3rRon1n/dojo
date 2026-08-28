@@ -55,18 +55,17 @@ if ! github_auth_detect; then
   warn "  gh auth login"
 fi
 
-# Drop into the repos workspace, if this is an interactive terminal.
-if [[ -t 0 && -d "$REPOS_DIR" ]]; then
+# Drop into the dojo UI (whiptail Main Menu) on an interactive terminal.
+if [[ -t 0 && -f "$DOJO_DIR/menu.sh" ]]; then
   echo
-  read -r -p "[dojo] enter dojo (cd into $REPOS_DIR) or exit? [enter/exit] " reply || reply="exit"
+  read -r -p "[dojo] open the dojo menu (install/update/login/services/workspace)? [Y/n] " reply || reply="y"
   case "$reply" in
-    exit|Exit|EXIT|n|N|no|No)
-      log "staying put — cd $REPOS_DIR whenever you're ready."
+    n|N|no|No)
+      log "skipping -- run 'dojo' anytime to open the menu."
       ;;
     *)
-      log "entering $REPOS_DIR — type 'exit' to leave."
-      set +euo pipefail
-      exec "${SHELL:-bash}"
+      log "opening the dojo UI — pick an action or type 'exit' to leave."
+      exec "$DOJO_DIR/menu.sh"
       ;;
   esac
 fi
