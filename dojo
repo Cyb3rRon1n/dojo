@@ -1,378 +1,67 @@
 #!/usr/bin/env bash
 #
-# dojo — day-to-day wrapper around the dojo stack: update, install, status,
-# doctor. For first-time setup on a fresh machine, use install.sh instead.
+# dojo — day-to-day front end over the dojo engine (lib.sh). No args opens
+# the whiptail Main Menu; a subcommand runs the same action non-interactively
+# so it stays scriptable/headless.
+#
+#   dojo                 open the Main Menu (install / update / services / login / ...)
+#   dojo install [--tools LIST] [--repos SLUG]
+#   dojo update          git pull + re-wire the whole stack
+#   dojo repos           git pull + submodule update for the repos workspace
+#   dojo status          versions, GitHub auth, whether you're behind origin
+#   dojo doctor          verify every wiring point; exit 1 if anything is broken
+#   dojo tokens          live token usage / cache refresh / context-fill thresholds
+#   dojo menu            open the Main Menu explicitly
 #
 set -euo pipefail
 
-DOJO_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
-REPOS_DIR="${REPOS_DIR:-$HOME/projects/github/repos}"
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+DOJO_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 
-warn() { printf '[dojo][warn] %s\n' "$*" >&2; }
-
-# ---------------------------------------------------------------------------
-# fix_git_object_perms / safe_git_pull — same self-healing as install.sh's
-# copy (kept duplicated rather than shared: install.sh runs standalone via
-# `curl | bash` before ~/dojo exists on disk, so it can't source a file that
-# lives inside the repo it's about to clone). Fixes the failure mode where a
-# past root-run left some objects under $DOJO_DIR/.git owned by root, which
-# blocks a normal user's `git pull` with "insufficient permission ... .git/
-# objects" — 'dojo update' used to just crash on that instead of self-healing.
-# ---------------------------------------------------------------------------
-fix_git_object_perms() {
-  local dir="$1" bad
-  bad="$(find "$dir" -path '*/.git*' ! -user "$(id -u)" 2>/dev/null | head -5)"
-  [[ -n "$bad" ]] || return 1
-  warn "$dir: files under .git are owned by another user (likely a past 'sudo' run), blocking normal git operations:"
-  printf '%s\n' "$bad" | sed 's/^/[dojo][warn]   /' >&2
-  if [[ -t 0 ]] && command -v sudo >/dev/null 2>&1; then
-    read -r -p "[dojo] fix with 'sudo chown -R $(id -un):$(id -gn) $dir'? [y/N] " fix_reply || fix_reply="n"
-    if [[ "$fix_reply" =~ ^[Yy] ]] && sudo chown -R "$(id -u):$(id -g)" "$dir"; then
-      return 0
-    fi
-  fi
-  warn "fix manually with: sudo chown -R $(id -un):$(id -gn) $dir"
-  return 1
-}
-
-safe_git_pull() {
-  local dir="$1" label="$2" out
-
-  if out="$(git -C "$dir" pull --ff-only 2>&1)"; then
-    return 0
-  fi
-
-  if printf '%s' "$out" | grep -qi 'insufficient permission\|permission denied' && ! printf '%s' "$out" | grep -qi 'publickey'; then
-    if fix_git_object_perms "$dir"; then
-      out="$(git -C "$dir" pull --ff-only 2>&1)" && { echo "[dojo] $label: ownership fixed, updated"; return 0; }
-    fi
-  fi
-
-  if printf '%s' "$out" | grep -qi 'overwritten by merge\|commit your changes or stash'; then
-    warn "$label: local changes in the working tree conflict with the update:"
-    printf '%s\n' "$out" | grep '^\s' | sed 's/^/[dojo][warn]   /' >&2
-    if [[ -t 0 ]]; then
-      read -r -p "[dojo] stash local changes in $dir and retry? [y/N] " stash_reply || stash_reply="n"
-      if [[ "$stash_reply" =~ ^[Yy] ]] && git -C "$dir" stash push -u -m "dojo auto-stash $(date +%s)" >/dev/null; then
-        if git -C "$dir" pull --ff-only >/dev/null; then
-          echo "[dojo] $label: local changes stashed (see 'git -C $dir stash list'), updated"
-          return 0
-        fi
-      fi
-    fi
-    warn "fix manually: cd $dir && git stash && git pull --ff-only"
-  fi
-
-  warn "$label pull failed"
-  printf '%s\n' "$out" | tail -10 >&2
-  return 1
-}
-
-# ---------------------------------------------------------------------------
-# safe_submodule_update <dir> — same self-healing as install.sh's copy,
-# including the SSH-pubkey-to-HTTPS fallback for submodule URLs (git has no
-# such fallback itself, and .gitmodules records whichever URL form the
-# workspace repo happened to use).
-# ---------------------------------------------------------------------------
-safe_submodule_update() {
-  local dir="$1" out
-
-  if out="$(git -C "$dir" submodule update --init --recursive 2>&1)"; then
-    return 0
-  fi
-
-  if printf '%s' "$out" | grep -qiE 'permission denied \(publickey\)|could not read from remote repository'; then
-    if [[ -f "$dir/.gitmodules" ]] && grep -q 'git@github\.com:' "$dir/.gitmodules"; then
-      warn "submodule SSH auth failed — rewriting .gitmodules to HTTPS and retrying"
-      sed -i.bak 's#git@github\.com:#https://github.com/#g' "$dir/.gitmodules"
-      git -C "$dir" submodule sync >/dev/null 2>&1
-      if out="$(git -C "$dir" submodule update --init --recursive 2>&1)"; then
-        echo "[dojo] repos submodules: switched to HTTPS, updated"
-        rm -f "$dir/.gitmodules.bak"
-        return 0
-      fi
-    fi
-  elif printf '%s' "$out" | grep -qi 'insufficient permission\|permission denied'; then
-    if fix_git_object_perms "$dir"; then
-      if out="$(git -C "$dir" submodule update --init --recursive 2>&1)"; then
-        echo "[dojo] repos submodules: ownership fixed, updated"
-        return 0
-      fi
-    fi
-  fi
-
-  warn "submodule update failed"
-  printf '%s\n' "$out" | tail -10 >&2
-  return 1
-}
+# shellcheck disable=SC1091
+source "$DOJO_DIR/lib.sh"
 
 usage() {
   cat <<'EOF'
-usage: dojo <command>
+usage: dojo [command]
 
-  update   git pull + re-run bootstrap.sh (restore/refresh the whole stack)
-  install  re-run install.sh (one-shot build-out, idempotent — same as fresh machine)
-  repos    git pull + submodule update for the projects/github/repos workspace
-  status   versions, GitHub auth, whether you're behind origin
-  doctor   verify every wiring point is intact; exit 1 if anything is broken
-  tokens   live token usage / cache refresh / context-fill thresholds (--one-line for compact output)
+  (no command)  open the Main Menu (install / update / services / login / ...)
+  install       install tools + wire everything up (--tools LIST --repos SLUG)
+  update        git pull + re-run the whole wire-up (self-heal)
+  repos         git pull + submodule update for the projects/github/repos workspace
+  status        versions, GitHub auth, whether you're behind origin
+  doctor        verify every wiring point is intact; exit 1 if broken
+  tokens        live token usage / cache refresh / context-fill thresholds
+  menu          open the Main Menu
 EOF
   exit 1
 }
 
-# Tool lookup that survives non-login shells: cron/CI/hook contexts don't get
-# the profile block's PATH additions, so a perfectly-wired ~/.local/bin tool
-# (graphify via uv, for one) would false-negative as MISSING/BROKEN. Login
-# shells see these dirs via the dojo profile block; check them as fallback.
-find_tool() {
-  local p
-  if p="$(command -v "$1" 2>/dev/null)"; then
-    echo "$p"
-    return 0
-  fi
-  for p in "$HOME/.local/bin/$1" "$HOME/bin/$1" "/usr/local/bin/$1" "/usr/local/sbin/$1"; do
-    [[ -x "$p" ]] && { echo "$p"; return 0; }
-  done
-  return 1
-}
-
-ver_of() {
-  local p v
-  if p="$(find_tool "$1")" && v="$("$p" --version 2>/dev/null | head -1)" && [[ -n "$v" ]]; then
-    echo "$v"
-  else
-    echo MISSING
-  fi
-}
-
-git_auth_status() {
-  if command -v ssh >/dev/null 2>&1 && ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -T git@github.com 2>&1 | grep -q "successfully authenticated"; then
-    echo "GitHub SSH OK"
-  elif command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-    echo "GitHub HTTPS OK (gh)"
-  else
-    echo "NOT configured — see README"
-  fi
-}
-
-cmd_status() {
-  rev="$(git -C "$DOJO_DIR" rev-parse --short HEAD 2>/dev/null || echo '?')"
-  echo "dojo:      $DOJO_DIR @ $rev"
-  git -C "$DOJO_DIR" fetch -q origin 2>/dev/null || true
-  behind="$(git -C "$DOJO_DIR" rev-list --count 'HEAD..@{upstream}' 2>/dev/null || echo '?')"
-  if [[ "$behind" == "0" ]]; then
-    echo "           up to date"
-  else
-    echo "           $behind commit(s) behind — run 'dojo update'"
-  fi
-  echo "opencode:  $(ver_of opencode)"
-  echo "claude:    $(ver_of claude)"
-  echo "copilot:   $(ver_of copilot)"
-  echo "codex:     $(ver_of codex)"
-  echo "aider:     $(ver_of aider)"
-  echo "plugins:   $(p="$(find_tool claude)" && "$p" plugin list 2>/dev/null | grep -ciE 'ponytail|token-optimizer|superpowers' || echo 0) of 3 (claude)"
-  echo "rtk:       $(ver_of rtk)"
-  echo "graphify:  $(ver_of graphify)"
-  echo "auth:      $(git_auth_status)"
-}
-
-cmd_doctor() {
-  local fail=0
-  ok()  { printf '  ok      %s\n' "$*"; }
-  bad() { printf '  BROKEN  %s\n' "$*"; fail=1; }
-
-  echo "dojo doctor — $DOJO_DIR"
-
-  echo "  shell PATH persistence (survives reboot):"
-  if grep -qs '# >>> dojo >>>' "$HOME/.bashrc" 2>/dev/null; then
-    ok "PATH block present in ~/.bashrc"
-  else
-    bad "PATH block missing from ~/.bashrc — run 'dojo update'"
-  fi
-  if [[ -f "$HOME/.zshrc" ]]; then
-    if grep -qs '# >>> dojo >>>' "$HOME/.zshrc" 2>/dev/null; then
-      ok "PATH block present in ~/.zshrc"
-    else
-      bad "PATH block missing from ~/.zshrc — run 'dojo update'"
-    fi
-  fi
-
-  echo "  tools:"
-  local t v p
-  for t in opencode claude rtk graphify; do
-    if p="$(find_tool "$t")"; then
-      v="$("$p" --version 2>/dev/null | head -1)"
-      ok "$t ($v)"
-    else
-      bad "$t not on PATH"
-    fi
-  done
-
-  echo "  opencode:"
-  local oconf="$HOME/.config/opencode"
-  if [[ "$(readlink -f "$oconf/opencode.jsonc" 2>/dev/null)" == "$DOJO_DIR/opencode/opencode.jsonc" ]]; then
-    ok "global config symlinked to dojo"
-  else
-    bad "opencode.jsonc not symlinked to dojo — run 'dojo update'"
-  fi
-  local np=0 p
-  for p in \
-    "$oconf/node_modules/@dietrichgebert/ponytail" \
-    "$oconf/node_modules/token-optimizer-opencode" \
-    "$oconf/node_modules/rtk-for-opencode" \
-    "$oconf/node_modules/@javargasm/opencode-graphify" \
-    "$oconf/node_modules/opencode-token-usage"; do
-    [[ -d "$p" ]] && np=$((np + 1))
-  done
-  if [[ "$np" -eq 5 ]]; then
-    ok "plugin deps installed ($np/5)"
-  else
-    bad "plugin deps missing ($np/5) — run 'dojo update'"
-  fi
-
-  echo "  opencode plugin pins (installed == pinned):"
-  local pins_bad=0
-  while read -r name ver; do
-    local inst=""
-    inst="$(python3 -c "import json,sys;d=json.load(open(sys.argv[1]));print(d.get('version',''))" \
-      "$oconf/node_modules/$name/package.json" 2>/dev/null || true)"
-    if [[ -n "$inst" ]] && [[ "$inst" == "$ver" ]]; then
-      ok "$name $inst"
-    else
-      bad "$name pinned $ver, installed ${inst:-MISSING} — run 'dojo update'"
-      pins_bad=$((pins_bad + 1))
-    fi
-  done < <(python3 - "$oconf/package.json" <<'PY'
-import json, sys
-d = json.load(open(sys.argv[1]))
-for n, v in d.get("dependencies", {}).items():
-    print(n, v.lstrip("^~"))
-PY
-)
-
-  echo "  claude:"
-  if grep -qs 'rtk hook claude' "$HOME/.claude/settings.json" 2>/dev/null; then
-    ok "RTK PreToolUse hook present"
-  else
-    bad "RTK hook missing from settings.json — run 'dojo update'"
-  fi
-  local cp=0
-  if p="$(find_tool claude)"; then
-    cp="$("$p" plugin list 2>/dev/null | grep -ciE 'ponytail|token-optimizer|superpowers' || true)"
-  fi
-  if [[ "$cp" -ge 3 ]]; then
-    ok "plugins enabled ($cp/3)"
-  else
-    bad "plugins missing ($cp/3) — run 'dojo update'"
-  fi
-
-  echo "  claude statusline:"
-  local sl=0
-  sl="$(python3 - "$HOME/.claude/settings.json" <<'PY'
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-    sl = d.get("statusLine") or {}
-    print("ok" if sl.get("type") == "command" and sl.get("command") else "none")
-except (OSError, ValueError):
-    print("unreadable")
-PY
-)"
-  case "$sl" in
-    ok) ok "statusLine command present" ;;
-    none) echo "  note  statusLine slot empty — token-optimizer auto-installs its quality bar here" ;;
-    *) bad "settings.json unreadable" ;;
-  esac
-
-  echo "  claude docs:"
-  local f
-  for f in CLAUDE.md RTK.md; do
-    if [[ "$(readlink -f "$HOME/.claude/$f" 2>/dev/null)" == "$DOJO_DIR/claude/$f" ]]; then
-      ok "$f linked to dojo"
-    else
-      bad "$f not linked to dojo — run 'dojo update'"
-    fi
-  done
-  if [[ "$(readlink -f "$HOME/.claude/skills/task-observer" 2>/dev/null)" == "$DOJO_DIR/claude/skills/task-observer" ]]; then
-    ok "task-observer skill linked to dojo"
-  else
-    bad "task-observer skill not linked to dojo — run 'dojo update'"
-  fi
-
-  if command -v copilot >/dev/null 2>&1; then
-    echo "  copilot:"
-    if [[ "$(readlink -f "$HOME/.copilot/statusline.sh" 2>/dev/null)" == "$DOJO_DIR/copilot/statusline.sh" ]]; then
-      ok "statusline.sh linked to dojo"
-    else
-      bad "statusline.sh not linked to dojo — run 'dojo update'"
-    fi
-    local csl
-    csl="$(python3 -c "import json,sys;d=json.load(open(sys.argv[1]));print('ok' if d.get('statusLine',{}).get('command') else 'none')" \
-      "$HOME/.copilot/settings.json" 2>/dev/null || echo unreadable)"
-    case "$csl" in
-      ok) ok "statusLine set in ~/.copilot/settings.json" ;;
-      none | unreadable) bad "statusLine missing from ~/.copilot/settings.json — run 'dojo update'" ;;
-    esac
-  fi
-
-  if command -v codex >/dev/null 2>&1; then
-    echo "  codex:"
-    if grep -qs 'status_line' "$HOME/.codex/config.toml"; then
-      ok "status_line in ~/.codex/config.toml"
-    else
-      # bootstrap skips this when the user manages [tui] themselves, so
-      # 'dojo update' would not fix it — a note, not a failure.
-      echo "  note  status_line absent from ~/.codex/config.toml — add manually or run 'dojo update'"
-    fi
-  fi
-
-  if command -v aider >/dev/null 2>&1; then
-    echo "  aider:"
-    if [[ "$(readlink -f "$HOME/.aider.conf.yml" 2>/dev/null)" == "$DOJO_DIR/aider/aider.conf.yml" ]]; then
-      ok "aider.conf.yml linked to dojo"
-    else
-      bad "aider.conf.yml not linked to dojo — run 'dojo update'"
-    fi
-  fi
-
-  echo "  github auth: $(git_auth_status)"
-
-  if [[ "$fail" -eq 0 ]]; then
-    echo "  all checks passed."
-  else
-    echo "  broken items found — run 'dojo update' to repair." >&2
-  fi
-  return "$fail"
-}
-
-cmd_repos() {
-  if [[ ! -d "$REPOS_DIR/.git" ]]; then
-    echo "[dojo] no workspace at $REPOS_DIR yet — run 'dojo install' to set one up (it'll ask for your GitHub owner/repo)." >&2
-    return 1
-  fi
-  local ok=0
-  safe_git_pull "$REPOS_DIR" "repos" || ok=1
-  safe_submodule_update "$REPOS_DIR" || ok=1
-  return "$ok"
-}
-
 cmd="${1:-}"
 case "$cmd" in
-  update)
-    safe_git_pull "$DOJO_DIR" "dojo" || true
-    "$DOJO_DIR/bootstrap.sh"
+  "" | menu)
+    exec "$DOJO_DIR/menu.sh" "${@:2}"
     ;;
   install)
-    exec "$DOJO_DIR/install.sh"
+    shift
+    run_install "$@"
+    ;;
+  update)
+    run_update
     ;;
   repos)
-    cmd_repos
+    dojo_repos
     ;;
   status)
-    cmd_status
+    dojo_status
     ;;
   doctor)
-    cmd_doctor
+    dojo_doctor
     ;;
   tokens)
     shift
