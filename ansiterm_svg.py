@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Render a tmux ANSI capture of the whiptail menu into a crisp terminal-style SVG.
 
-Palette tuned to dojo's on-brand dark terminal look but reproduces the *actual*
-SGR colors whiptail emitted. Auto-crops the frame's content bounding box so each
-SVG hugs its menu box.
+Reproduces the *actual* SGR colors whiptail emitted, mapped onto dojo's brand
+palette (ink #1a1613, paper #f3ece0, brass #a9905f, seal red #c23b28).
+Auto-crops the frame's content bounding box so each SVG hugs its menu box.
 """
 import re, sys, os
 
@@ -12,15 +12,17 @@ CHAR_H = 15.5
 
 # SGR (base-16) -> (fg, bg, ...) resolution; we only need the six codes used.
 PAL = {
-    '30?': "#111318",   # fg black
-    '40!': "#06070a",   # bg black
-    '37?': "#d9d9d9",   # fg white
-    '44!': "#3a5f9e",   # bg blue (whiptail pane)
-    '43!': "#e3b341",   # bg yellow (highlight / active)
-    '!':   "#06070a",   # default bg
+    '30?': "#1a1613",   # fg black (ink — text on brass/red)
+    '33?': "#a9905f",   # fg yellow (brass — title/help)
+    '37?': "#f3ece0",   # fg white (paper)
+    '40!': "#1a1613",   # bg black (ink pane)
+    '41!': "#c23b28",   # bg red (seal — active selection / button)
+    '43!': "#a9905f",   # bg yellow (brass — buttons)
+    '44!': "#1a1613",   # bg blue (unused now; ink fallback)
+    '!':   "#1a1613",   # default bg
 }
-FG_DEFAULT = "#d9d9d9"
-BG_DEFAULT = "#06070a"
+FG_DEFAULT = "#f3ece0"
+BG_DEFAULT = "#1a1613"
 
 class Cell:
     __slots__ = ('ch', 'fg', 'bg', 'bold')
