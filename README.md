@@ -132,6 +132,18 @@ dojo tokens   # live token usage / cache refresh / context-fill thresholds
 `dojo update` is the self-heal: any wiring that rotted (deleted symlink, lost
 plugin, missing hook) is re-created. `dojo doctor` tells you *when* to run it.
 
+### Menu
+
+`dojo` with no arguments opens a whiptail Main Menu, and each section has its
+own submenu — run everything from one screen without remembering the
+subcommands:
+
+![dojo Main Menu](assets/dojo-menu-main.svg)
+
+| Install Tools | Login | Services | Workspace |
+|---|---|---|---|
+| ![Install Tools](assets/dojo-menu-install.svg) | ![Login](assets/dojo-menu-login.svg) | ![Services](assets/dojo-menu-services.svg) | ![Workspace](assets/dojo-menu-workspace.svg) |
+
 ### Token status
 
 While opencode or Claude Code is running, token-optimizer writes live session
