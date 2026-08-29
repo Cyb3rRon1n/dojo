@@ -243,6 +243,20 @@ else
   DESKTOP_AVAILABLE=false
   log "No desktop environment detected — Orca will run in server mode"
   log "Run 'orca serve' on this machine, then access the web UI at http://<IP>:3000 from any browser on your LAN/VPN"
+# Port resolution: if 3000 is already in use, default to 3001
+if [[ -n "$ORCA_PORT" ]]; then
+  log "ORCA_PORT previously set to $ORCA_PORT"
+elif command -v nc >/dev/null 2>&1; then
+  if nc -z localhost 3000 <>/dev/null 2>&1; then
+    export ORCA_PORT=3001
+    log "Port 3000 already in use — using ORCA_PORT=3001 instead"
+  fi
+elif command -v ss >/dev/null 2>&1; then
+  if ss -tlnp | grep -q ':3000 '; then
+    export ORCA_PORT=3001
+    log "Port 3000 already in use — using ORCA_PORT=3001 instead"
+  fi
+fi
   log "The Orca CLI skills will still be wired by bootstrap; only the GUI app is skipped."
 fi
 
