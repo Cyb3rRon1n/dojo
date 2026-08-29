@@ -211,6 +211,13 @@ if want orca && $env:DESKTOP_AVAILABLE {
 } elseif want orca && -not $env:DESKTOP_AVAILABLE {
   # Headless: Orca GUI skipped; server instructions already emitted in Phase 1
   log "Orca GUI skipped (no desktop). Run 'orca serve' for web UI access via LAN/VPN. The Orca CLI skills will still be wired by bootstrap."
+# Port resolution: if 3000 is already in use, default to 3001
+if ($env:ORCA_PORT) {
+  log "ORCA_PORT previously set to $env:ORCA_PORT"
+} elseif (Test-NetConnection -Port 3000 -InformationLevel Quiet) {
+  $env:ORCA_PORT = 3001
+  log "Port 3000 already in use — using ORCA_PORT=$env:ORCA_PORT instead"
+}
 }
 if ((-not $ReposSlug) -and (-not (Test-Path (Join-Path $ReposDir ".git"))) -and (-not [Console]::IsInputRedirected)) {
   $defaultSlug = ""
