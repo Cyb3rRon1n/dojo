@@ -16,6 +16,14 @@
 #
 set -euo pipefail
 
+# Token optimizer opt-in (set by install.sh via TOKEN_OPTIMIZE env var)
+case "${TOKEN_OPTIMIZE:-}" in
+  1)  TOKEN_SKIP=0 ;;
+  *)  TOKEN_SKIP=1
+      log "Token optimizer stack skipped (not opted-in during install)"
+      ;;
+esac
+
 DOJO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 CLAUDE_HOME="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
@@ -95,7 +103,9 @@ if ! command -v codex >/dev/null 2>&1; then
   warn "codex not found — install: npm install -g @openai/codex"
 fi
 
-if command -v rtk >/dev/null 2>&1; then
+if [ "${TOKEN_SKIP}" = "1" ]; then
+  log "RTK install skipped (token optimizer not opted-in during install)"
+elif command -v rtk >/dev/null 2>&1; then
   skip_step "rtk binary"
 elif command -v curl >/dev/null 2>&1; then
   run_step "rtk binary" bash -c 'curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh' \

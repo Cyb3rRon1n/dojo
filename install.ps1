@@ -187,15 +187,31 @@ if ($env:DOJO_TOOLS) {
 }
 function Want($tool) { $SelectedTools -contains $tool }
 
+}
+
 # ---------------------------------------------------------------------------
-# Multi-repo workspace -- *your* GitHub org/repo, not dojo's. This used to be
-# hardcoded to the dojo author's own workspace repo, which meant anyone else
-# running this installer got the author's personal projects cloned onto
-# their machine. Ask instead. $env:DOJO_REPOS_REPO=owner/repo skips the
-# prompt for scripted/headless runs; leaving it blank (prompt or env) skips
-# this whole step -- no multi-repo workspace is a perfectly fine answer.
+# Phase 2: Orca — desktop work environment
 # ---------------------------------------------------------------------------
-$ReposSlug = $env:DOJO_REPOS_REPO
+if want orca && $env:DESKTOP_AVAILABLE {
+  # Windows .exe install + CLI registration guidance
+  try {
+    $latest = Invoke-RestMethod -Method Get -Uri "https://api.github.com/repos/stablyai/orca/releases/latest" -ErrorAction Stop
+    $exeUrl = $latest.assets | Where-Object { $_.name -match '\.exe$' } | Select-Object -First 1 | ForEach-Object { $_.browser_download_url }
+    if ($exeUrl) {
+      $orcaExe = Join-Path $LOCAL_BIN "orca.exe"
+      log "downloading Orca .exe to $orcaExe"
+      Invoke-WebRequest -Uri $exeUrl -OutFile $orcaExe -ErrorAction Stop
+      log "Orca .exe downloaded. Launch Orca once, then register the CLI in Settings → General → Orca CLI, then run 'dojo update' to wire agent skills."
+    } else {
+      warn "orca: could not find .exe asset in latest release — download from https://onorca.dev/download and register the CLI in Settings → General → Orca CLI"
+    }
+  } catch {
+    warn "orca: could not download .exe (admin/network restrictions) — download from https://onorca.dev/download and register the CLI in Settings → General → Orca CLI"
+  }
+} elseif want orca && -not $env:DESKTOP_AVAILABLE {
+  # Headless: Orca GUI skipped; server instructions already emitted in Phase 1
+  log "Orca GUI skipped (no desktop). Run 'orca serve' for web UI access via LAN/VPN. The Orca CLI skills will still be wired by bootstrap."
+}
 if ((-not $ReposSlug) -and (-not (Test-Path (Join-Path $ReposDir ".git"))) -and (-not [Console]::IsInputRedirected)) {
   $defaultSlug = ""
   if (Get-Command gh -ErrorAction SilentlyContinue) {
