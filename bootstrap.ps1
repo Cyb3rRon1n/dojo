@@ -39,7 +39,7 @@ function Warn($msg) { Write-Host "[dojo][warn] $msg" -ForegroundColor Yellow }
 # Progress: "[dojo] (n/N) step description... ok/skip/FAILED" -- one line per
 # step, matching bootstrap.sh's format.
 # ---------------------------------------------------------------------------
-$TotalSteps = 26
+$TotalSteps = 24
 $script:StepN = 0
 function Step($desc) {
   $script:StepN++
