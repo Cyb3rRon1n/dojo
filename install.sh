@@ -188,7 +188,7 @@ fi
 ALL_TOOLS=(opencode claude copilot codex aider agy openclaw cursor cline qwen goose pi orca)
 if [[ -n "${DOJO_TOOLS:-}" ]]; then
   IFS=',' read -ra SELECTED_TOOLS <<< "$DOJO_TOOLS"
-elif [[ -t 0 ]]; then
+elif true; then
   echo "Which tools should dojo install/update?"
   echo "  1) opencode"
   echo "  2) claude   (Claude Code)"
@@ -203,7 +203,7 @@ elif [[ -t 0 ]]; then
   echo " 11) goose    (Block's Goose — MCP-native agent)"
   echo " 12) pi       (Pi — minimal harness, any provider)"
   echo " 13) orca     (Orca — desktop work environment, worktrees for your agents)"
-  read -rp "Enter numbers/names (space or comma separated), or blank for all: " reply
+  read -rp "Enter numbers/names (space or comma separated), or blank for all: " reply || reply="all"
   if [[ -z "$reply" ]]; then
     SELECTED_TOOLS=("${ALL_TOOLS[@]}")
   else
@@ -244,6 +244,23 @@ else
   log "No desktop environment detected — Orca will run in server mode"
   log "Run 'orca serve' on this machine, then access the web UI at http://<IP>:3000 from any browser on your LAN/VPN"
 # Port resolution: if 3000 is already in use, default to 3001
+# Orca choice: install the desktop GUI, or run in server mode
+if [[ -t 0 ]]; then
+  read -rp "Install Orca (desktop work environment)? (y/n) " orca_choice
+else
+  # Piped one-liner: default to yes if desktop available, otherwise no
+  if [ "$DESKTOP_AVAILABLE" = "true" ]; then
+    orca_choice="y"
+  else
+    orca_choice="n"
+  fi
+fi
+if [[ "$orca_choice" =~ ^[Yy]$ ]]; then
+  # proceed with Orca install (existing block follows)
+  :
+else
+  log "Orca GUI skipped per choice"
+fi
 if [[ -n "$ORCA_PORT" ]]; then
   log "ORCA_PORT previously set to $ORCA_PORT"
 elif command -v nc >/dev/null 2>&1; then
@@ -510,7 +527,7 @@ fi
 # ---------------------------------------------------------------------------
 # Phase 4: Token optimizer opt-in
 # ---------------------------------------------------------------------------
-if [[ -t 0 ]]; then
+if true; then
   read -rp "Install token optimizer stack (RTK/graphify/token-optimizer/ponytable + dojo tokens)? [Y/n] " t_opt_reply
   if [[ "${t_opt_reply:-}" =~ ^[Yy]$ ]] || [[ -z "${t_opt_reply:-}" ]]; then
     export TOKEN_OPTIMIZE=1
