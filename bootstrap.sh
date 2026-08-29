@@ -34,7 +34,7 @@ die()  { printf '[dojo][error] %s\n' "$*" >&2; exit 1; }
 # banner, etc.) swallowed unless that step actually fails, in which case the
 # tail of its output prints so you can debug it.
 # ---------------------------------------------------------------------------
-TOTAL_STEPS=23
+TOTAL_STEPS=24
 STEP_N=0
 step() {
   STEP_N=$((STEP_N + 1))
@@ -470,6 +470,32 @@ else
   skip_step "OpenClaw plugins" "openclaw missing"
 fi
 
+# ---------------------------------------------------------------------------
+# 6c. Orca — the work environment. Orca is a desktop app (GUI) that runs the
+#     CLI agents dojo already provisions, each in its own git worktree. It
+#     does NOT do its own token optimization — it reads the agents' own
+#     configs (.claude/, .codex/, opencode config, hooks), which is exactly
+#     where dojo's RTK/graphify/token-optimizer/ponytail stack lives. So a
+#     dojo-provisioned machine is automatically an Orca machine that runs
+#     token-efficient — no Orca-side work needed.
+#
+#     The `orca` CLI ships inside the desktop app (install it via
+#     install.sh or the app's Settings → Orca CLI). The one action that works
+#     headlessly WITHOUT a running Orca runtime is skill install: it drops
+#     Orca's native skill stubs (worktrees, orchestration, computer-use) into
+#     the same agent skill directories dojo manages, so agents launched inside
+#     Orca know how to drive it. Idempotent; --dry-run/--json supported.
+# ---------------------------------------------------------------------------
+if command -v orca >/dev/null 2>&1; then
+  run_step "Orca agent skills" bash -c '
+    orca skills install --skill orca-cli --skill orchestration --skill computer-use --agent claude-code,codex,copilot,opencode 2>/dev/null \
+      || orca skills install --skill orca-cli --skill orchestration --skill computer-use --agent claude-code,codex,opencode 2>/dev/null \
+      || orca skills install --all
+  ' || warn "orca skills install failed (needs the desktop app running once; rerun 'dojo update' after pairing)"
+else
+  skip_step "Orca agent skills" "orca missing — install via install.sh or the Orca desktop app"
+fi
+
 # TOTAL_STEPS is a hand-maintained constant (self-counting it would mean
 # parsing this script's own if/elif/else branches for distinct step labels
 # — more fragile than the drift it'd prevent). Catch drift here instead of
@@ -490,6 +516,7 @@ echo "  copilot:              $(command -v copilot >/dev/null && echo installed 
 echo "  codex:                $(command -v codex >/dev/null && echo installed || echo MISSING)"
 echo "  aider:                $(command -v aider >/dev/null && echo installed || echo MISSING)"
 echo "  openclaw:             $(command -v openclaw >/dev/null && echo installed || echo MISSING)"
+echo "  orca:                 $(command -v orca >/dev/null && orca --version 2>/dev/null | head -1 || echo MISSING)"
 echo "  rtk:                  $(command -v rtk >/dev/null && rtk --version | head -1 || echo MISSING)"
 echo "  graphify:             $(command -v graphify >/dev/null && graphify --version | head -1 || echo MISSING)"
 

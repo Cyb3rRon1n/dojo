@@ -185,7 +185,7 @@ fi
 # Piped one-liners with no TTY (rare) default to installing everything, same
 # as before this option existed.
 # ---------------------------------------------------------------------------
-ALL_TOOLS=(opencode claude copilot codex aider agy openclaw cursor cline qwen goose pi)
+ALL_TOOLS=(opencode claude copilot codex aider agy openclaw cursor cline qwen goose pi orca)
 if [[ -n "${DOJO_TOOLS:-}" ]]; then
   IFS=',' read -ra SELECTED_TOOLS <<< "$DOJO_TOOLS"
 elif [[ -t 0 ]]; then
@@ -202,6 +202,7 @@ elif [[ -t 0 ]]; then
   echo " 10) qwen     (Qwen Code — Alibaba's agent, free Qwen OAuth tier)"
   echo " 11) goose    (Block's Goose — MCP-native agent)"
   echo " 12) pi       (Pi — minimal harness, any provider)"
+  echo " 13) orca     (Orca — desktop work environment, worktrees for your agents)"
   read -rp "Enter numbers/names (space or comma separated), or blank for all: " reply
   if [[ -z "$reply" ]]; then
     SELECTED_TOOLS=("${ALL_TOOLS[@]}")
@@ -222,6 +223,7 @@ elif [[ -t 0 ]]; then
         10|qwen)    SELECTED_TOOLS+=(qwen) ;;
         11|goose)   SELECTED_TOOLS+=(goose) ;;
         12|pi)      SELECTED_TOOLS+=(pi) ;;
+        13|orca)    SELECTED_TOOLS+=(orca) ;;
         *) warn "unknown tool selection '$tok' — ignoring" ;;
       esac
     done
@@ -410,6 +412,45 @@ if want pi; then
     npm install -g @earendil-works/pi-coding-agent || warn "pi install failed"
   else
     log "pi already installed ($(pi --version 2>/dev/null || echo unknown))"
+  fi
+fi
+
+# Orca — the desktop "work environment". The `orca` CLI ships with the app
+# (register it under Settings → Orca CLI), and the app itself is a GUI
+# package: brew cask on macOS, AppImage on Linux, .exe installer on Windows.
+# bootstrap.sh wires Orca's agent skills into the agents it already sets up.
+# The app can't be installed non-interactively on every platform, so install
+# what we can via package manager and point at the download when we can't.
+if want orca; then
+  if command -v orca >/dev/null 2>&1; then
+    log "orca already installed ($(orca --version 2>/dev/null || echo unknown))"
+  else
+    case "$(uname -s)" in
+      Darwin)
+        if command -v brew >/dev/null 2>&1; then
+          log "installing Orca (brew cask)"
+          brew install --cask stablyai/orca/orca || warn "orca brew install failed — register the CLI via the app's Settings → Orca CLI"
+        else
+          warn "orca: brew missing — download from https://onorca.dev/download then register the CLI in Settings"
+        fi
+        ;;
+      Linux)
+        log "installing Orca (AppImage)"
+        mkdir -p "$LOCAL_BIN"
+        # Desktop Linux: the app runs from the AppImage, but the `orca` CLI
+        # (that `orca skills install` below / bootstrap.sh uses) is registered
+        # from inside the app (Settings -> Orca CLI) and resolves as `orca-ide`
+        # on Linux desktop builds. So this just fetches the app; the CLI
+        # registration is the one interactive step.
+        curl -fsSL "https://github.com/stablyai/orca/releases/latest/download/orca-linux.AppImage" -o "$LOCAL_BIN/orca.AppImage" \
+          && chmod +x "$LOCAL_BIN/orca.AppImage" \
+          && warn "orca app downloaded to ~/.local/bin/orca.AppImage — run it once and register the CLI (Settings -> Orca CLI), then re-run 'dojo update'" \
+          || warn "orca AppImage download failed"
+        ;;
+      *)
+        warn "orca: no non-interactive installer for $(uname -s) — download from https://onorca.dev/download and register the CLI in Settings → Orca CLI"
+        ;;
+    esac
   fi
 fi
 
