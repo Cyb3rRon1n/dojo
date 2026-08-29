@@ -56,6 +56,10 @@ is a no-op if already done.
 - Prefer WSL instead? `install.sh`/`bootstrap.sh` already run unmodified
   inside it — just run the bash Quickstart command above from your WSL
   shell instead of `install.ps1`.
+- **No desktop?** Orca needs a GUI to work your agents in by default, but on
+  a headless box (server/VPS) you can run to it remotely: `orca serve` on the
+  host, then connect from Orca's app on another machine — so dojo's
+  optimizer stack still wires the agents while the GUI lives where you do.
 
 ## Catalog
 
