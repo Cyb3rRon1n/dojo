@@ -113,6 +113,7 @@ usage: dojo <command>
   update   git pull + re-run bootstrap.sh (restore/refresh the whole stack)
   install  re-run install.sh (one-shot build-out, idempotent — same as fresh machine)
   repos    git pull + submodule update for the projects/github/repos workspace
+  workspace  open dojo's frontend (Orca) — verify it's wired, then jump into its worktrees
   status   versions, GitHub auth, whether you're behind origin
   doctor   verify every wiring point is intact; exit 1 if anything is broken
   tokens   live token usage / cache refresh / context-fill thresholds (--one-line for compact output)
@@ -378,6 +379,30 @@ cmd_repos() {
   return "$ok"
 }
 
+# cmd_workspace — the front door to the dojo work environment. Orca is dojo's
+# required frontend (the GUI that runs the optimized agents in worktrees); this
+# verifies the CLI is present, confirms an Orca runtime is reachable, then lists
+# the live worktrees. Worktree/terminal commands need the app running, so if
+# that check fails we tell the user to launch it rather than pretend.
+cmd_workspace() {
+  if ! command -v orca >/dev/null 2>&1; then
+    echo "[dojo] no Orca frontend on PATH." >&2
+    echo "[dojo] Orca is dojo's work environment. Install the desktop app (https://onorca.dev/download)," >&2
+    echo "[dojo] register its CLI (Settings -> General -> Orca CLI), then run 'dojo update'." >&2
+    return 1
+  fi
+
+  if ! orca status --json >/dev/null 2>&1; then
+    echo "[dojo] Orca CLI is on PATH but no Orca runtime is reachable yet." >&2
+    echo "[dojo] Launch the desktop app once (worktrees/terminals need a running Orca)," >&2
+    echo "[dojo] then re-run 'dojo workspace' to jump into the environment." >&2
+    return 1
+  fi
+
+  echo "[dojo] Orca workspace — live worktrees:"
+  orca worktree ps --json
+}
+
 cmd="${1:-}"
 case "$cmd" in
   update)
@@ -389,6 +414,9 @@ case "$cmd" in
     ;;
   repos)
     cmd_repos
+    ;;
+  workspace)
+    cmd_workspace
     ;;
   status)
     cmd_status

@@ -12,6 +12,15 @@ A training ground for AI coding tools. Clone once, run one command, and
 whatever token-saving optimizations each one actually supports — plus your
 GitHub projects, cloned and ready.
 
+**Orca is dojo's frontend.** dojo optimizes the agents; **Orca** is the
+work environment you actually work in — a desktop GUI that runs those
+agents side by side, each in its own git worktree, with a code editor, diff
+review, terminal, browser, and a mobile companion. `dojo workspace` is the
+front door: it verifies Orca is wired, then jumps you into the worktrees.
+dojo *is* Orca's optimizer — the RTK/graphify/token-optimizer/ponytail stack
+lives in the agent configs Orca reads, so a dojo machine is automatically a
+token-efficient Orca machine, no Orca-side setup needed.
+
 Anyone can point this at their own GitHub and train their own setup the
 same way.
 
@@ -34,12 +43,16 @@ No sudo/elevation required for any of it. Safe to re-run later — every step
 is a no-op if already done.
 
 **Windows notes** (native PowerShell, not WSL):
-- The `dojo` CLI itself (`dojo update`/`status`/`doctor`/`tokens`) is a bash
+- The `dojo` CLI itself (`dojo update`/`status`/`doctor`/`workspace`/`tokens`) is a bash
   script — `bootstrap.ps1` wires
   it through Git for Windows' `bash.exe` if found (near-universal, since
   it ships with Git for Windows). Everything else works without it.
 - `rtk` now ships a real Windows build and installs automatically, same as
   Linux/Mac.
+- **Orca (the frontend) on Windows:** `install.ps1` guides you to the
+  `.exe` installer (it's a GUI app). After installing, launch Orca once and
+  register its CLI (Settings → General → Orca CLI), then `dojo update`
+  wires Orca's agent skills and `dojo workspace` opens the environment.
 - Prefer WSL instead? `install.sh`/`bootstrap.sh` already run unmodified
   inside it — just run the bash Quickstart command above from your WSL
   shell instead of `install.ps1`.
@@ -129,11 +142,12 @@ run lean sessions, disable what you don't use per project
 Once installed, a `dojo` command is on your `PATH`:
 
 ```bash
-dojo status   # versions, GitHub auth, whether you're behind origin
-dojo doctor   # verify every wiring point (PATH, symlinks, hooks, plugins); exit 1 if broken
-dojo update   # git pull + re-run bootstrap.sh, from wherever you cloned it
-dojo install  # re-run install.sh (idempotent) — same one-shot as a fresh machine
-dojo tokens   # live token usage / cache refresh / context-fill thresholds
+dojo status    # versions, GitHub auth, whether you're behind origin
+dojo doctor    # verify every wiring point (PATH, symlinks, hooks, plugins); exit 1 if broken
+dojo update    # git pull + re-run bootstrap.sh, from wherever you cloned it
+dojo install   # re-run install.sh (idempotent) — same one-shot as a fresh machine
+dojo workspace # open dojo's frontend (Orca): verify it's wired, then list live worktrees
+dojo tokens    # live token usage / cache refresh / context-fill thresholds
 ```
 
 `dojo update` is the self-heal: any wiring that rotted (deleted symlink, lost
