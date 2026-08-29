@@ -237,10 +237,10 @@ want() { printf '%s\n' "${SELECTED_TOOLS[@]}" | grep -qx "$1"; }
 # Phase 1: Desktop presence check
 # ---------------------------------------------------------------------------
 if [[ -n "$DISPLAY" || -n "$WAYLAND_DISPLAY" || -n "$KDE_FULL_SESSION" || -n "$GNOME_SESSION" ]]; then
-  DESKTOP_AVAILABLE=true
+  export DESKTOP_AVAILABLE=true
   log "Desktop environment detected"
 else
-  DESKTOP_AVAILABLE=false
+  export DESKTOP_AVAILABLE=false
   log "No desktop environment detected — Orca will run in server mode"
   log "Run 'orca serve' on this machine, then access the web UI at http://<IP>:3000 from any browser on your LAN/VPN"
 # Port resolution: if 3000 is already in use, default to 3001
@@ -513,15 +513,15 @@ fi
 if [[ -t 0 ]]; then
   read -rp "Install token optimizer stack (RTK/graphify/token-optimizer/ponytable + dojo tokens)? [Y/n] " t_opt_reply
   if [[ "${t_opt_reply:-}" =~ ^[Yy]$ ]] || [[ -z "${t_opt_reply:-}" ]]; then
-    TOKEN_OPTIMIZE=1
+    export TOKEN_OPTIMIZE=1
     log "Token optimizer stack enabled"
   else
-    TOKEN_OPTIMIZE=0
+    export TOKEN_OPTIMIZE=0
     log "Token optimizer stack skipped (installing agents only)"
   fi
 else
   # Piped one-liner: default to enabling the token optimizer stack
-  TOKEN_OPTIMIZE=1
+  export TOKEN_OPTIMIZE=1
   log "Token optimizer stack enabled (default for one-liner install)"
 fi
 
