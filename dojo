@@ -173,6 +173,7 @@ cmd_status() {
   echo "plugins:   $(p="$(find_tool claude)" && "$p" plugin list 2>/dev/null | grep -ciE 'ponytail|token-optimizer|superpowers' || echo 0) of 3 (claude)"
   echo "rtk:       $(ver_of rtk)"
   echo "graphify:  $(ver_of graphify)"
+  echo "orca:      $(ver_of orca)"
   echo "auth:      $(git_auth_status)"
 }
 
@@ -333,6 +334,27 @@ PY
     else
       bad "aider.conf.yml not linked to dojo — run 'dojo update'"
     fi
+  fi
+
+  echo "  orca:"
+  if command -v orca >/dev/null 2>&1; then
+    ok "orca CLI present"
+    # Orca ships agent skill stubs (orca-cli/orchestration/computer-use) into
+    # the agent skill dirs. Probe the shared dirs it installs to; if absent,
+    # a note (bootstrap's headless install only runs once the app is paired).
+    local stub=""
+    for d in "$HOME/.config/opencode/skills" "$HOME/.claude/skills" "$HOME/.agents/skills"; do
+      if find "$d" -maxdepth 2 -name 'orca-cli' -type d 2>/dev/null | grep -q .; then
+        stub=1; break
+      fi
+    done
+    if [[ -n "$stub" ]]; then
+      ok "orca-cli skill stub present"
+    else
+      echo "  note  orca-cli skill stub not found — run 'dojo update' after pairing the desktop app"
+    fi
+  else
+    bad "orca CLI not on PATH — install the Orca desktop app and register its CLI (Settings → Orca CLI), then run 'dojo update'"
   fi
 
   echo "  github auth: $(git_auth_status)"

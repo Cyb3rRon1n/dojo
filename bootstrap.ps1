@@ -39,7 +39,7 @@ function Warn($msg) { Write-Host "[dojo][warn] $msg" -ForegroundColor Yellow }
 # Progress: "[dojo] (n/N) step description... ok/skip/FAILED" -- one line per
 # step, matching bootstrap.sh's format.
 # ---------------------------------------------------------------------------
-$TotalSteps = 25
+$TotalSteps = 26
 $script:StepN = 0
 function Step($desc) {
   $script:StepN++
@@ -508,6 +508,19 @@ if (Get-Command openclaw -ErrorAction SilentlyContinue) {
   SkipStep "OpenClaw plugins" "openclaw missing"
 }
 
+# 6c. Orca -- the desktop work environment. The `orca` CLI ships with the
+#     desktop app (register it under Settings -> Orca CLI). It reads the
+#     agents' own configs dojo already optimizes, so a dojo machine is an
+#     Orca machine that runs token-efficient. Only the headless skill install
+#     is done here; worktrees/terminals need the app paired once.
+if (Get-Command orca -ErrorAction SilentlyContinue) {
+  if (-not (RunStep "Orca agent skills" {
+    orca skills install --skill orca-cli --skill orchestration --skill computer-use --agent claude-code,codex,copilot,opencode 2>$null
+  })) { Warn "orca skills install failed (needs the desktop app paired once; rerun 'dojo update' after)" }
+} else {
+  SkipStep "Orca agent skills" "orca missing -- install the desktop app and register its CLI (Settings -> Orca CLI)"
+}
+
 # $TotalSteps is a hand-maintained constant (self-counting it would mean
 # parsing this script's own if/elseif/else branches for distinct step
 # labels -- more fragile than the drift it'd prevent). Catch drift here
@@ -534,6 +547,7 @@ Write-Host "  copilot:              $(Have copilot)"
 Write-Host "  codex:                $(Have codex)"
 Write-Host "  aider:                $(Have aider)"
 Write-Host "  openclaw:             $(Have openclaw)"
+Write-Host "  orca:                 $(Have orca)"
 Write-Host "  rtk:                  $(if (Get-Command rtk -ErrorAction SilentlyContinue) { (rtk --version | Select-Object -First 1) } else { 'MISSING' })"
 Write-Host "  graphify:             $(if (Get-Command graphify -ErrorAction SilentlyContinue) { (graphify --version | Select-Object -First 1) } else { 'MISSING' })"
 Write-Host "  dojo CLI:             $(if (Test-Path (Join-Path $LocalBin 'dojo.cmd')) { 'wired via git-bash' } else { 'unavailable -- see warning above' })"

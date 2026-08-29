@@ -8,7 +8,7 @@
 
 A training ground for AI coding tools. Clone once, run one command, and
 **opencode**, **Claude Code**, **GitHub Copilot CLI**, **OpenAI Codex CLI**,
-**Aider**, **Google Antigravity CLI**, **OpenClaw**, and **Cursor** are all set up with
+**Aider**, **Google Antigravity CLI**, **OpenClaw**, **Cursor**, and **Orca** are all set up with
 whatever token-saving optimizations each one actually supports — plus your
 GitHub projects, cloned and ready.
 
@@ -26,8 +26,9 @@ bash <(curl -fsSL https://raw.githubusercontent.com/Cyb3rRon1n/dojo/main/install
 powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/Cyb3rRon1n/dojo/main/install.ps1 | iex"
 ```
 
-Installs whichever of the eight tools you don't already have, wires up
-whatever optimizations each one supports, clones `~/projects/github/repos`,
+Installs whichever of the tools you don't already have, wires up
+whatever optimizations each one supports (including Orca's headless agent
+skills), clones `~/projects/github/repos`,
 and prompts for GitHub auth (SSH key or `gh auth login`) if it's missing.
 No sudo/elevation required for any of it. Safe to re-run later — every step
 is a no-op if already done.
@@ -61,10 +62,21 @@ is a no-op if already done.
 | [Qwen Code](https://www.npmjs.com/package/@qwen-code/qwen-code) | Alibaba's terminal agent, free Qwen OAuth tier |
 | [Goose](https://block.github.io/goose) | Block's MCP-native agent, Linux-Foundation governed |
 | [Pi](https://pi.dev) | Minimal coding-agent harness, any provider or local model |
+| [Orca](https://github.com/stablyai/orca) | Desktop **work environment** — runs your CLI agents (Claude Code, Codex, opencode…) each in its own git worktree, with a mobile companion. Not an agent itself: it runs the ones dojo already optimizes |
+
+> **Orca + dojo:** Orca is the *environment*, dojo is the *optimizer inside it*.
+> Orca reads each agent's own config (`.claude/`, `.codex/`, opencode config,
+> hooks) — exactly where dojo's RTK/graphify/token-optimizer/ponytail stack
+> lives — and does no token optimization of its own. So a dojo-provisioned
+> machine is automatically an Orca machine whose agents run token-efficient,
+> with zero Orca-side setup. bootstrap.sh wires Orca's native agent skills
+> (`orca-cli` / `orchestration` / `computer-use`) headlessly into those agents;
+> only the GUI features (worktrees, Design Mode, mobile) need the app paired
+> once.
 
 dojo never force-installs a tool you didn't ask for — `bootstrap.sh` only
 configures what's already present on the machine (`install.sh` is the one
-that offers to install all eight fresh).
+that offers to install all of them fresh).
 
 ### Optimizations dojo wires up
 
@@ -231,7 +243,7 @@ tests/
 assets/               # dojo's own logo/banner (mark, lockup, social preview)
 bootstrap.sh          # idempotent setup (plugins, hooks, configs, per tool)
 bootstrap.ps1         # same, native Windows port (PowerShell, run by install.ps1)
-install.sh            # one-shot fresh-machine build-out (installs all 8 tools, calls bootstrap.sh, then clones repos/)
+install.sh            # one-shot fresh-machine build-out (installs all the tools, calls bootstrap.sh, then clones repos/)
 install.ps1           # same, native Windows port -- installs via npm/winget/official *.ps1 installers, calls bootstrap.ps1
 dojo                  # day-to-day command: `dojo update` / `dojo install` / `dojo status` / `dojo doctor` / `dojo tokens` (symlinked onto PATH by bootstrap.sh; shimmed via git-bash on Windows)
 dojo-tokens.py        # reads token-optimizer's live state (SQLite + Claude JSON) — used by `dojo tokens`
