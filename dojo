@@ -380,27 +380,28 @@ cmd_repos() {
 }
 
 # cmd_workspace — the front door to the dojo work environment. Orca is dojo's
-# required frontend (the GUI that runs the optimized agents in worktrees); this
-# verifies the CLI is present, confirms an Orca runtime is reachable, then lists
-# the live worktrees. Worktree/terminal commands need the app running, so if
-# that check fails we tell the user to launch it rather than pretend.
+# required frontend (the GUI that runs the optimized agents in worktrees).
+# Gate on the worktree CLI actually returning worktrees rather than on the
+# presence of an 'orca' binary: GNOME ships a screen reader also named 'orca',
+# so command -v can't tell stablyai's Orca from it, and both exit 0 even on
+# nonsense flags. Real JSON worktrees are the only unambiguous signal.
 cmd_workspace() {
-  if ! command -v orca >/dev/null 2>&1; then
-    echo "[dojo] no Orca frontend on PATH." >&2
-    echo "[dojo] Orca is dojo's work environment. Install the desktop app (https://onorca.dev/download)," >&2
-    echo "[dojo] register its CLI (Settings -> General -> Orca CLI), then run 'dojo update'." >&2
+  local out
+  if ! out="$(orca worktree ps --json 2>/dev/null)"; then
+    echo "[dojo] no stablyai Orca worktree CLI addressable (missing, or its name is" >&2
+    echo "[dojo] taken by another 'orca' like the GNOME screen reader)." >&2
+    echo "[dojo] Install the Orca desktop app (https://onorca.dev/download), register its CLI" >&2
+    echo "[dojo] (Settings -> General -> Orca CLI), then run 'dojo update'." >&2
     return 1
   fi
-
-  if ! orca status --json >/dev/null 2>&1; then
-    echo "[dojo] Orca CLI is on PATH but no Orca runtime is reachable yet." >&2
-    echo "[dojo] Launch the desktop app once (worktrees/terminals need a running Orca)," >&2
-    echo "[dojo] then re-run 'dojo workspace' to jump into the environment." >&2
+  if ! printf '%s' "$out" | grep -qE '(\[|\{)\s*"?(id|worktrees|name)'; then
+    echo "[dojo] Orca CLI responds but returned no worktrees." >&2
+    echo "[dojo] Launch the Orca desktop app once (worktrees need a running Orca), then" >&2
+    echo "[dojo] re-run 'dojo workspace'." >&2
     return 1
   fi
-
   echo "[dojo] Orca workspace — live worktrees:"
-  orca worktree ps --json
+  printf '%s\n' "$out"
 }
 
 cmd="${1:-}"

@@ -75,6 +75,16 @@ JSON
   "$DOJO_DIR/dojo" status >/dev/null 2>&1
 }
 
+@test "dojo workspace: no stablyai Orca worktree CLI -> guidance, non-zero" {
+  # Isolated PATH means no worktree-producing Orca can be present (and if a
+  # host 'orca' exists it's an impostor like the GNOME screen reader, which is
+  # exactly the collision cmd_workspace must survive). Either way -> guidance.
+  run env PATH="/usr/bin:/bin" HOME="$TMP_HOME" bash "$DOJO_DIR/dojo" workspace
+  [ "$status" -ne 0 ]
+  echo "$output" | grep -q "Orca worktree CLI"
+  echo "$output" | grep -q "dojo update"
+}
+
 @test "doctor: claude doc links wired by bootstrap verify ok" {
   export CLAUDE_CONFIG_DIR="$TMP_HOME/.claude"
   mkdir -p "$CLAUDE_CONFIG_DIR"
