@@ -234,6 +234,19 @@ fi
 want() { printf '%s\n' "${SELECTED_TOOLS[@]}" | grep -qx "$1"; }
 
 # ---------------------------------------------------------------------------
+# Phase 1: Desktop presence check
+# ---------------------------------------------------------------------------
+if [[ -n "$DISPLAY" || -n "$WAYLAND_DISPLAY" || -n "$KDE_FULL_SESSION" || -n "$GNOME_SESSION" ]]; then
+  DESKTOP_AVAILABLE=true
+  log "Desktop environment detected"
+else
+  DESKTOP_AVAILABLE=false
+  log "No desktop environment detected — Orca will run in server mode"
+  log "Run 'orca serve' on this machine, then access the web UI at http://<IP>:3000 from any browser on your LAN/VPN"
+  log "The Orca CLI skills will still be wired by bootstrap; only the GUI app is skipped."
+fi
+
+# ---------------------------------------------------------------------------
 # Multi-repo workspace — *your* GitHub org/repo, not dojo's. This used to be
 # hardcoded to the dojo author's own workspace repo, which meant anyone else
 # running this installer got the author's personal projects cloned onto
@@ -421,7 +434,7 @@ fi
 # bootstrap.sh wires Orca's agent skills into the agents it already sets up.
 # The app can't be installed non-interactively on every platform, so install
 # what we can via package manager and point at the download when we can't.
-if want orca; then
+if want orca && [ "$DESKTOP_AVAILABLE" = "true" ]; then
   if command -v orca >/dev/null 2>&1; then
     log "orca already installed ($(orca --version 2>/dev/null || echo unknown))"
   else
@@ -452,6 +465,9 @@ if want orca; then
         ;;
     esac
   fi
+elif want orca && [ "$DESKTOP_AVAILABLE" = "false" ]; then
+  # Headless: Orca GUI skipped; server instructions already emitted in Phase 1
+  log "Orca GUI skipped (no desktop). Run 'orca serve' for web UI access via LAN/VPN. The Orca CLI skills will still be wired by bootstrap."
 fi
 
 # uv is the Python tool manager graphify installs through
@@ -476,6 +492,25 @@ fi
 # ---------------------------------------------------------------------------
 # 3. Full stack (plugins, hooks, binaries, configs)
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Phase 4: Token optimizer opt-in
+# ---------------------------------------------------------------------------
+if [[ -t 0 ]]; then
+  read -rp "Install token optimizer stack (RTK/graphify/token-optimizer/ponytable + dojo tokens)? [Y/n] " t_opt_reply
+  if [[ "${t_opt_reply:-}" =~ ^[Yy]$ ]] || [[ -z "${t_opt_reply:-}" ]]; then
+    TOKEN_OPTIMIZE=1
+    log "Token optimizer stack enabled"
+  else
+    TOKEN_OPTIMIZE=0
+    log "Token optimizer stack skipped (installing agents only)"
+  fi
+else
+  # Piped one-liner: default to enabling the token optimizer stack
+  TOKEN_OPTIMIZE=1
+  log "Token optimizer stack enabled (default for one-liner install)"
+fi
+
 log "running bootstrap"
 "$DOJO_DIR/bootstrap.sh"
 
