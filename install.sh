@@ -142,6 +142,7 @@ DOJO_DIR="${DOJO_DIR:-$HOME/dojo}"
 DOJO_REPO="git@github.com:Cyb3rRon1n/dojo.git"
 DOJO_HTTPS="https://github.com/Cyb3rRon1n/dojo.git"
 REPOS_DIR="${REPOS_DIR:-$HOME/projects/github/repos}"
+mkdir -p "$REPOS_DIR"
 LOCAL_BIN="$HOME/.local/bin"
 OPENCODE_BIN="$HOME/.opencode/bin"
 NPM_GLOBAL="$HOME/.npm-global"
@@ -236,7 +237,7 @@ want() { printf '%s\n' "${SELECTED_TOOLS[@]}" | grep -qx "$1"; }
 # ---------------------------------------------------------------------------
 # Phase 1: Desktop presence check
 # ---------------------------------------------------------------------------
-if [[ -n "$DISPLAY" || -n "$WAYLAND_DISPLAY" || -n "$KDE_FULL_SESSION" || -n "$GNOME_SESSION" ]]; then
+if [[ -n "${DISPLAY:-}" || -n "${WAYLAND_DISPLAY:-}" || -n "${KDE_FULL_SESSION:-}" || -n "${GNOME_SESSION:-}" ]]; then
   export DESKTOP_AVAILABLE=true
   log "Desktop environment detected"
 else
@@ -261,7 +262,7 @@ if [[ "$orca_choice" =~ ^[Yy]$ ]]; then
 else
   log "Orca GUI skipped per choice"
 fi
-if [[ -n "$ORCA_PORT" ]]; then
+if [[ -n "${ORCA_PORT:-}" ]]; then
   log "ORCA_PORT previously set to $ORCA_PORT"
 elif command -v nc >/dev/null 2>&1; then
   if nc -z localhost 3000 <>/dev/null 2>&1; then
