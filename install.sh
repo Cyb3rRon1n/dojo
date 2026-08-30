@@ -255,28 +255,45 @@ esac
 }
 
 # ---------------------------------------------------------------------------
+# Show the interactive main menu
+# ---------------------------------------------------------------------------
+show_menu() {
+    echo ""
+    echo "=== Orca Work Environment Installer ==="
+    echo "Welcome to the dojo Orca work environment installer."
+    echo "Please select your installation mode:"
+    echo "1) Orca Desktop (with GUI, editor, mobile companion)"
+    echo "2) Orca Headless (no GUI, server/VPS optimized)"
+    echo "3) Token Optimization Setup"
+    echo "4) Complete Install Wipe"
+    echo "5) Exit"
+    echo ""
+}
+
+# ---------------------------------------------------------------------------
 # Read user choice from input (handles both interactive and piped)
 # ---------------------------------------------------------------------------
 read_choice() {
     local line
-    local found=0
+    choice=""
+    optimize=""
 
     # Try to read from /dev/tty for interactive input
     if [ -t 1 ] && [ -t 0 ]; then
-        # We're in a TTY - read directly from terminal
+        # We're in a TTY - show the menu and read directly from terminal
+        show_menu
         read -rp "Enter choice [1-5]: " choice
     else
-        # No TTY - read from stdin (piped input)
+        # No TTY - read from stdin (piped input): choice then optional y/n
         while IFS= read -r line || [[ -n "$line" ]]; do
-            # Look for choice (1-5) or optimize (y/n)
-            if [[ "$found" -eq 0 ]] && [[ "$line" =~ ^[1-5]$ ]]; then
+            # Skip blank lines
+            [[ -z "$line" ]] && continue
+            # First meaningful token is the choice (1-5)
+            if [[ -z "$choice" ]] && [[ "$line" =~ ^[1-5]$ ]]; then
                 choice="$line"
-                found=1
-            elif [[ "$found" -eq 0 ]] && [[ "$line" =~ ^[YyNn]$ ]]; then
+            # Any y/n after the choice is the token-optimization preference
+            elif [[ -n "$choice" ]] && [[ "$line" =~ ^[YyNn]$ ]]; then
                 optimize="$line"
-                found=1
-            fi
-            if [[ "$found" -eq 1 ]]; then
                 break
             fi
         done
@@ -315,9 +332,6 @@ main() {
     local variant="${choice:-1}"
     local optimize="${optimize:-Y}"
 
-    # Step 1: Install selected Orca variant
-    log "Step 1: Installing Orca variant..."
-
     case "$variant" in
         1)
             log "Installing Orca Desktop..."
@@ -335,13 +349,25 @@ main() {
                 install_orca_headless
             fi
             ;;
+        3)
+            log "Token optimization setup"
+            ;;
+        4)
+            log "Complete install wipe"
+            wipe_install
+            exit 0
+            ;;
+        5)
+            log "Exiting installer."
+            exit 0
+            ;;
         *)
-            log "Invalid choice - installing Orca Desktop by default"
-            install_orca_desktop
+            warn "Invalid choice: $variant"
+            exit 1
             ;;
     esac
 
-    # Step 2: Token optimization
+    # Token optimization (skipped for wipe/exit, which return above)
     log "Step 2: Token optimization setup"
 
     # Normalize optimize input
