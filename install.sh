@@ -395,7 +395,8 @@ main() {
     log "  - Orca variant: $installed_variant"
     log "  - Configuration located under $HOME/.orca-*/"
     log ""
-    log "You can run 'orca' to open the work environment."
+    log "Open the work environment with 'dojo workspace' (verifies Orca, then opens the worktrees)."
+    log "  The CLI itself is 'orca-ide' — on some machines a bare 'orca' is the GNOME screen reader."
     log "Token optimization plugins can be configured with 'dojo tokens'."
 }
 
