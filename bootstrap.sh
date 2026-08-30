@@ -16,6 +16,26 @@
 #
 set -euo pipefail
 
+log()  { printf '[dojo] %s\n' "$*"; }
+warn() { printf '[dojo][warn] %s\n' "$*" >&2; }
+die()  { printf '[dojo][error] %s\n' "$*" >&2; exit 1; }
+
+# Resolve the stablyai Orca CLI. The 'orca' name is often owned by the GNOME
+# screen reader, which doesn't understand 'skills'/'worktree' subcommands.
+find_orca() {
+  local c out
+  for c in orca-ide orca; do
+    if command -v "$c" >/dev/null 2>&1; then
+      out="$("$c" worktree ps --json 2>/dev/null || true)"
+      if printf '%s' "$out" | grep -qE '^[\[{]'; then
+        printf '%s\n' "$c"
+        return 0
+      fi
+    fi
+  done
+  return 1
+}
+
 # Token optimizer opt-in (set by install.sh via TOKEN_OPTIMIZE env var)
 case "${TOKEN_OPTIMIZE:-}" in
   1)  TOKEN_SKIP=0 ;;
@@ -33,16 +53,13 @@ if [[ ":$PATH:" != *":$LOCAL_BIN:"* ]]; then
   export PATH="$LOCAL_BIN:$PATH"
 fi
 
-warn() { printf '[dojo][warn] %s\n' "$*" >&2; }
-die()  { printf '[dojo][error] %s\n' "$*" >&2; exit 1; }
-
 # ---------------------------------------------------------------------------
 # Progress: "[dojo] (n/N) step description... ok/skip/FAILED" — one line per
 # step, with a tool's normal stdout/stderr (npm install noise, graphify's
 # banner, etc.) swallowed unless that step actually fails, in which case the
 # tail of its output prints so you can debug it.
 # ---------------------------------------------------------------------------
-TOTAL_STEPS=24
+TOTAL_STEPS=25
 STEP_N=0
 step() {
   STEP_N=$((STEP_N + 1))
@@ -496,12 +513,12 @@ fi
 #     the same agent skill directories dojo manages, so agents launched inside
 #     Orca know how to drive it. Idempotent; --dry-run/--json supported.
 # ---------------------------------------------------------------------------
-if command -v orca >/dev/null 2>&1; then
+if ORCA="$(find_orca 2>/dev/null)"; then
   run_step "Orca agent skills" bash -c '
-    orca skills install --skill orca-cli --skill orchestration --skill computer-use --agent claude-code,codex,copilot,opencode 2>/dev/null \
-      || orca skills install --skill orca-cli --skill orchestration --skill computer-use --agent claude-code,codex,opencode 2>/dev/null \
-      || orca skills install --all
-  ' || warn "orca skills install failed (needs the desktop app running once; rerun 'dojo update' after pairing)"
+    "$0" skills install --skill orca-cli --skill orchestration --skill computer-use --agent claude-code,codex,copilot,opencode 2>/dev/null \
+      || "$0" skills install --skill orca-cli --skill orchestration --skill computer-use --agent claude-code,codex,opencode 2>/dev/null \
+      || "$0" skills install --all
+  ' "$ORCA" || warn "orca skills install failed (needs the desktop app running once; rerun 'dojo update' after pairing)"
 else
   skip_step "Orca agent skills" "orca missing — install via install.sh or the Orca desktop app"
 fi
@@ -526,7 +543,7 @@ echo "  copilot:              $(command -v copilot >/dev/null && echo installed 
 echo "  codex:                $(command -v codex >/dev/null && echo installed || echo MISSING)"
 echo "  aider:                $(command -v aider >/dev/null && echo installed || echo MISSING)"
 echo "  openclaw:             $(command -v openclaw >/dev/null && echo installed || echo MISSING)"
-echo "  orca:                 $(command -v orca >/dev/null && orca --version 2>/dev/null | head -1 || echo MISSING)"
+echo "  orca:                 $(if o="$(find_orca 2>/dev/null)"; then echo "$o ($("$o" --version 2>/dev/null | head -1))"; else echo MISSING; fi)"
 echo "  rtk:                  $(command -v rtk >/dev/null && rtk --version | head -1 || echo MISSING)"
 echo "  graphify:             $(command -v graphify >/dev/null && graphify --version | head -1 || echo MISSING)"
 
