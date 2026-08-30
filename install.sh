@@ -173,60 +173,21 @@ esac
 install_token_optimization() {
     log "Installing token optimization plugins..."
 
-    # Install rtk if not already present
-    if ! command -v rtk >/dev/null 2>&1; then
-        log "Installing RTK..."
-        # Would run: curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh
-        log "RTK installation skipped (placeholder)"
-    fi
-
-    # Install graphify if not already present
-    if ! command -v graphify >/dev/null 2>&1; then
-        log "Installing graphify..."
-        # Would run: uv tool install graphifyy
-        log "graphify installation skipped (placeholder)"
-    fi
-
-    # Install token-optimizer if not already present
-    if ! command -v token-optimizer >/dev/null 2>&1; then
-        log "Installing token-optimizer..."
-        # Would run: pip install token-optimizer
-        log "token-optimizer installation skipped (placeholder)"
-    fi
-
-    # Install ponytail if not already present
-    if ! command -v ponytail >/dev/null 2>&1; then
-        log "Installing ponytail..."
-        # Would run: npm install -g @dietrichgebert/ponytail
-        log "ponytail installation skipped (placeholder)"
-    fi
-
-    # Configure dojo profile for token optimization
-    log "Configuring dojo profile for token optimization..."
-
-    # Add token optimizer to profile block
-    local profile_file
-    if [[ -f "$HOME/.bashrc" ]]; then
-        profile_file="$HOME/.bashrc"
-    elif [[ -f "$HOME/.zshrc" ]]; then
-        profile_file="$HOME/.zshrc"
+    # These are pinned plugins/helpers, not standalone bins: the real wiring is
+    # bootstrap.sh, so delegate to it rather than ad-hoc pip/npm installs.
+    local repo
+    if [[ -n "${DOJO_DIR:-}" && -x "$DOJO_DIR/bootstrap.sh" ]]; then
+        repo="$DOJO_DIR"
+    elif [[ -x "$(dirname "$0")/bootstrap.sh" ]]; then
+        repo="$(cd "$(dirname "$0")" && pwd)"
     else
-        profile_file="$HOME/.bashrc"
+        log "dojo repo not found here. Run 'dojo update' (reruns bootstrap.sh) to"
+        log "wire token optimization -- nothing is installed standalone."
+        return 0
     fi
 
-    # Insert dojo marker if not present
-    if ! grep -q '# >>> dojo >>>' "$profile_file" 2>/dev/null; then
-        log "Adding dojo profile block to $profile_file"
-        cat >> "$profile_file" <<'DOJO_PROFILE'
-# >>> dojo >>>
-# Managed by dojo (install.sh) — do not edit by hand.
-export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$HOME/.npm-global/bin:$PATH"
-export GITHUB_PERSONAL_ACCESS_TOKEN="$(gh auth token 2>/dev/null || echo '')"
-[ -s "$HOME/.local/bin/dojo-ssh-agent.sh" ] && . "$HOME/.local/bin/dojo-ssh-agent.sh"
-# <<< dojo <<<
-DOJO_PROFILE
-    fi
-
+    log "Running bootstrap.sh from $repo (idempotent; wires only what's present)..."
+    "$repo/bootstrap.sh"
     log "Token optimization installation complete."
 }
 
