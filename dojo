@@ -11,6 +11,30 @@ REPOS_DIR="${REPOS_DIR:-$HOME/projects/github/repos}"
 warn() { printf '[dojo][warn] %s\n' "$*" >&2; }
 
 # ---------------------------------------------------------------------------
+# fix_env_dir_owner <dir> — same prompt-and-sudo self-heal as
+# fix_git_object_perms, but for local env dirs (.serena, .omo) that a past
+# root-run left root-owned. A root-owned .serena/project.yml (mode 600) gives
+# serena a hard Permission denied when it tries to read its own state, and
+# 'dojo update' can neither fix nor report it. Reuse the established
+# interactive-sudo-chown pattern so the loops below can heal several dirs.
+# ---------------------------------------------------------------------------
+fix_env_dir_owner() {
+  local dir="$1" bad
+  bad="$(find "$dir" -maxdepth 2 ! -user "$(id -u)" 2>/dev/null | head -5)"
+  [[ -n "$bad" ]] || return 1
+  warn "$dir: owned by another user (likely a past 'sudo' run), blocking tools that read it (e.g. serena):"
+  printf '%s\n' "$bad" | sed 's/^/[dojo][warn]   /' >&2
+  if [[ -t 0 ]] && command -v sudo >/dev/null 2>&1; then
+    read -r -p "[dojo] fix with 'sudo chown -R $(id -un):$(id -gn) $dir'? [y/N] " fix_reply || fix_reply="n"
+    if [[ "$fix_reply" =~ ^[Yy] ]] && sudo chown -R "$(id -u):$(id -g)" "$dir"; then
+      echo "[dojo] $dir: ownership fixed"
+      return 0
+    fi
+  fi
+  warn "fix manually with: sudo chown -R $(id -un):$(id -gn) $dir"
+  return 1
+}
+
 # fix_git_object_perms / safe_git_pull — same self-healing as install.sh's
 # copy (kept duplicated rather than shared: install.sh runs standalone via
 # `curl | bash` before ~/dojo exists on disk, so it can't source a file that
@@ -397,6 +421,29 @@ cmd_repos() {
   return "$ok"
 }
 
+# heal_env_owner — scan every local env dir (.serena, .omo) under the dojo repo
+# and each project in the repos workspace, prompt-and-sudo-chown any left
+# root-owned by a past root run (serena's root-owned project.yml is a hard
+# Permission denied otherwise). No-op when nothing is mis-owned.
+heal_env_owner() {
+  local roots=("$DOJO_DIR" "$REPOS_DIR") d dir env
+  if [[ ! -d "$REPOS_DIR" ]]; then roots=("$DOJO_DIR"); fi
+  for dir in "${roots[@]}"; do
+    for env in .serena .omo; do
+      [[ -d "$dir/$env" ]] || continue
+      fix_env_dir_owner "$dir/$env"
+    done
+    # project dirs live one level under the workspace
+    for d in "$dir"/*/; do
+      [[ -e "$d/.serena" || -e "$d/.omo" ]] || continue
+      for env in .serena .omo; do
+        [[ -d "$d/$env" ]] && fix_env_dir_owner "$d/$env"
+      done
+    done
+  done
+}
+
+
 # cmd_workspace — the front door to the dojo work environment. Orca is dojo's
 # required frontend (the GUI that runs the optimized agents in worktrees).
 # Gate on the worktree CLI actually returning worktrees rather than on the
@@ -433,6 +480,7 @@ cmd="${1:-}"
 case "$cmd" in
   update)
     safe_git_pull "$DOJO_DIR" "dojo" || true
+    heal_env_owner
     "$DOJO_DIR/bootstrap.sh"
     ;;
   install)
