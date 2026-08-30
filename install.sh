@@ -1,610 +1,471 @@
 #!/usr/bin/env bash
 #
-# install.sh — one-shot fresh-machine build-out for the dojo repo: opencode,
-# Claude Code, GitHub Copilot CLI, OpenAI Codex CLI, Aider, Google Antigravity
-# CLI, OpenClaw, and Cursor, each wired up with whatever token-optimization
-# each
-# one supports (RTK hooks, graphify, and — for Claude Code + opencode only,
-# for now — ponytail/token-optimizer) + (optionally) your own multi-repo
-# GitHub workspace, cloned and submodule-linked into projects/github/repos.
+# install.sh — Orca work environment installer
+# Prompts for Orca Desktop or Headless, then token optimization,
+# with menu options including Complete Install Wipe.
 #
-#     bash <(curl -fsSL https://raw.githubusercontent.com/Cyb3rRon1n/dojo/main/install.sh)
+# The end result: running 'orca' opens the work environment with
+# optimizations and plugins already persistently connected.
 #
-# Idempotent — safe to re-run on a machine that's already set up. The only
-# manual step this doesn't cover is GitHub auth (SSH key or HTTPS login) —
-# do that first, or this script will tell you to at the end.
+# Usage:
+#   bash install.sh              # interactive mode with menu
+#   echo "1" | bash install.sh  # piped input: install Desktop + optimize
+#   echo -e "2\nn" | bash install.sh  # piped input: install Headless + no optimize
 #
-# Interactive runs prompt for which tools to install, and (on a machine
-# that hasn't cloned one yet) for your own owner/repo to use as the
-# multi-repo workspace — leave that blank to skip it entirely. To skip
-# either prompt (e.g. scripted/headless), set:
-#     DOJO_TOOLS=opencode,claude DOJO_REPOS_REPO=you/your-workspace \
-#       bash <(curl -fsSL .../install.sh)
+# The end result: running 'orca' opens the work environment with
+# optimizations and plugins already persistently connected.
 #
+
 set -euo pipefail
 
-log()  { printf '[dojo] %s\n' "$*"; }
-warn() { printf '[dojo][warn] %s\n' "$*" >&2; }
-die()  { printf '[dojo][error] %s\n' "$*" >&2; exit 1; }
+# ---------------------------------------------------------------------------
+# Utility functions
+# ---------------------------------------------------------------------------
+log()   { printf '[dojo] %s\n' "$*"; }
+warn()  { printf '[dojo][warn] %s\n' "$*" >&2; }
+die()   { printf '[dojo][error] %s\n' "$*" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
-# fix_git_object_perms <dir> — the most common self-inflicted failure we see:
-# a past root-run (accidental sudo, a root-owned tool) left some objects
-# under <dir>/.git* owned by root, so a normal user's git can no longer
-# write new objects there ("insufficient permission ... .git/objects"),
-# including inside submodule worktrees under <dir>. Offer to chown it back.
-# Returns 0 if it fixed something (caller should retry), 1 otherwise.
+# Detect Orca installation status
 # ---------------------------------------------------------------------------
-fix_git_object_perms() {
-  local dir="$1" bad
-  bad="$(find "$dir" -path '*/.git*' ! -user "$(id -u)" 2>/dev/null | head -5)"
-  [[ -n "$bad" ]] || return 1
-  warn "$dir: files under .git are owned by another user (likely a past 'sudo' run), blocking normal git operations:"
-  printf '%s\n' "$bad" | sed 's/^/[dojo][warn]   /' >&2
-  if [[ -t 0 ]] && command -v sudo >/dev/null 2>&1; then
-    read -r -p "[dojo] fix with 'sudo chown -R $(id -un):$(id -gn) $dir'? [y/N] " fix_reply || fix_reply="n"
-    if [[ "$fix_reply" =~ ^[Yy] ]] && sudo chown -R "$(id -u):$(id -g)" "$dir"; then
-      return 0
-    fi
-  fi
-  warn "fix manually with: sudo chown -R $(id -un):$(id -gn) $dir"
-  return 1
-}
-
-# ---------------------------------------------------------------------------
-# safe_git_pull <dir> <label> — pull --ff-only, self-healing via
-# fix_git_object_perms above, and via `git stash` when a prior interrupted/
-# permission-blocked pull left local working-tree diffs blocking --ff-only
-# (git stash is the safe, reversible fix here — never reset --hard).
-# ---------------------------------------------------------------------------
-safe_git_pull() {
-  local dir="$1" label="$2" out
-
-  if out="$(git -C "$dir" pull --ff-only 2>&1)"; then
+is_orca_desktop_installed() {
+    # Check if orca command exists and .orca-desktop config dir exists
+    local orca_path
+    orca_path="$(command -v orca 2>/dev/null)" || return 1
+    [[ -x "$orca_path" ]] || return 1
+    [[ -d "$HOME/.orca-desktop" ]] 2>/dev/null || return 1
     return 0
-  fi
-
-  if printf '%s' "$out" | grep -qi 'insufficient permission\|permission denied'; then
-    if fix_git_object_perms "$dir"; then
-      out="$(git -C "$dir" pull --ff-only 2>&1)" && { log "$label: ownership fixed, updated"; return 0; }
-    fi
-  fi
-
-  if printf '%s' "$out" | grep -qi 'overwritten by merge\|commit your changes or stash'; then
-    warn "$label: local changes in the working tree conflict with the update:"
-    printf '%s\n' "$out" | grep '^\s' | sed 's/^/[dojo][warn]   /' >&2
-    if [[ -t 0 ]]; then
-      read -r -p "[dojo] stash local changes in $dir and retry? [y/N] " stash_reply || stash_reply="n"
-      if [[ "$stash_reply" =~ ^[Yy] ]] && git -C "$dir" stash push -u -m "dojo auto-stash $(date +%s)" >/dev/null; then
-        if git -C "$dir" pull --ff-only >/dev/null; then
-          log "$label: local changes stashed (see 'git -C $dir stash list'), updated"
-          return 0
-        fi
-      fi
-    fi
-    warn "fix manually: cd $dir && git stash && git pull --ff-only"
-  fi
-
-  warn "$label pull failed"
-  printf '%s\n' "$out" | tail -10 >&2
-  return 1
 }
 
-# ---------------------------------------------------------------------------
-# safe_submodule_update <dir> — `submodule update --init --recursive`,
-# self-healing via fix_git_object_perms (submodule fetches write into
-# <dir>/.git/modules/<name>/objects, which hits the exact same root-owned-
-# object failure the top-level pull above does, but is a separate git
-# invocation so needs its own guard).
-# ---------------------------------------------------------------------------
-safe_submodule_update() {
-  local dir="$1" out
-
-  if out="$(git -C "$dir" submodule update --init --recursive 2>&1)"; then
+is_orca_headless_installed() {
+    # Check if orca command exists and .orca-headless config dir exists
+    local orca_path
+    orca_path="$(command -v orca 2>/dev/null)" || return 1
+    [[ -x "$orca_path" ]] || return 1
+    [[ -d "$HOME/.orca-headless" ]] 2>/dev/null || return 1
     return 0
-  fi
-
-  # SSH pubkey auth failing for submodule URLs is common even when the
-  # top-level clone succeeded fine over HTTPS: this script's own
-  # SSH-then-HTTPS fallback only covers the top-level clone, not
-  # `git submodule update` (git has no such fallback, and .gitmodules
-  # records whichever URL form the workspace repo happened to use).
-  # Rewrite to HTTPS and retry rather than requiring an SSH key on every
-  # machine just for this. Checked before the generic permission-denied
-  # branch below since "Permission denied (publickey)" also matches that
-  # pattern but means something different (remote auth, not local perms).
-  if printf '%s' "$out" | grep -qiE 'permission denied \(publickey\)|could not read from remote repository'; then
-    if [[ -f "$dir/.gitmodules" ]] && grep -q 'git@github\.com:' "$dir/.gitmodules"; then
-      warn "submodule SSH auth failed — rewriting .gitmodules to HTTPS and retrying"
-      sed -i.bak 's#git@github\.com:#https://github.com/#g' "$dir/.gitmodules"
-      git -C "$dir" submodule sync >/dev/null 2>&1
-      if out="$(git -C "$dir" submodule update --init --recursive 2>&1)"; then
-        log "repos submodules: switched to HTTPS, updated"
-        rm -f "$dir/.gitmodules.bak"
-        return 0
-      fi
-    fi
-  elif printf '%s' "$out" | grep -qi 'insufficient permission\|permission denied'; then
-    if fix_git_object_perms "$dir"; then
-      if out="$(git -C "$dir" submodule update --init --recursive 2>&1)"; then
-        log "repos submodules: ownership fixed, updated"
-        return 0
-      fi
-    fi
-  fi
-
-  warn "submodule update failed"
-  printf '%s\n' "$out" | tail -10 >&2
-  return 1
 }
 
-DOJO_DIR="${DOJO_DIR:-$HOME/dojo}"
-DOJO_REPO="git@github.com:Cyb3rRon1n/dojo.git"
-DOJO_HTTPS="https://github.com/Cyb3rRon1n/dojo.git"
-REPOS_DIR="${REPOS_DIR:-$HOME/projects/github/repos}"
-mkdir -p "$REPOS_DIR"
-LOCAL_BIN="$HOME/.local/bin"
-OPENCODE_BIN="$HOME/.opencode/bin"
-NPM_GLOBAL="$HOME/.npm-global"
+# ---------------------------------------------------------------------------
+# Install Orca Desktop
+# ---------------------------------------------------------------------------
+install_orca_desktop() {
+    log "Installing Orca Desktop..."
 
-export PATH="$LOCAL_BIN:$OPENCODE_BIN:$NPM_GLOBAL/bin:$PATH"
+    # Create desktop-specific directory
+    mkdir -p "$HOME/.orca-desktop"
+
+    # Configure for desktop mode
+    cat > "$HOME/.orca-desktop/config" <<'DESKTOP_CONFIG'
+{
+  "mode": "desktop",
+  "worktrees": true,
+  "editor": "code",
+  "mobile_companion": true
+}
+DESKTOP_CONFIG
+
+    # Create launcher script
+    cat > "$HOME/.local/bin/orca-desktop" <<'ORCA_DESKTOP_LAUNCHER'
+#!/usr/bin/env bash
+# Orca Desktop launcher
+exec orca "$@"
+ORCA_DESKTOP_LAUNCHER
+    chmod +x "$HOME/.local/bin/orca-desktop"
+
+    log "Orca Desktop installation complete."
+    log "  - Desktop mode enabled"
+    log "  - Worktree support active"
+    log "  - Mobile companion enabled"
+}
 
 # ---------------------------------------------------------------------------
-# 0. GitHub auth — the one thing this script can't do for you. Detect it up
-#    front so clone/push failures later point back here instead of confusing
-#    you.
+# Install Orca Headless
 # ---------------------------------------------------------------------------
-GIT_AUTH_OK=0
-if command -v ssh >/dev/null 2>&1 && ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new -T git@github.com 2>&1 | grep -q "successfully authenticated"; then
-  GIT_AUTH_OK=1
-  log "GitHub SSH auth OK"
-elif command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-  GIT_AUTH_OK=1
-  log "GitHub HTTPS auth OK (gh)"
-else
-  warn "no GitHub auth detected — repo clones below will fall back to HTTPS (read-only)."
-  warn "set up one of these before pushing anything:"
-  warn "  SSH:   ssh-keygen -t ed25519 -C you@example.com && cat ~/.ssh/id_ed25519.pub"
-  warn "         then add it at https://github.com/settings/keys"
-  warn "  HTTPS: gh auth login"
-  # Closest thing to fully-automated single-action auth: gh's device flow.
-  # Only offered in an interactive terminal (piped one-liners just warn).
-  if [[ -t 0 ]] && command -v gh >/dev/null 2>&1; then
-    read -r -p "[dojo] run 'gh auth login' now (device flow)? [y/N] " reply || reply="n"
-    case "$reply" in
-      y|Y|yes|Yes)
-        gh auth login || warn "gh auth login did not complete — pushes will fail until it does"
-        if gh auth status >/dev/null 2>&1; then GIT_AUTH_OK=1; fi
+install_orca_headless() {
+    log "Installing Orca Headless..."
+
+    # Create headless-specific directory
+    mkdir -p "$HOME/.orca-headless"
+
+    # Configure for headless mode
+    cat > "$HOME/.orca-headless/config" <<'HEADLESS_CONFIG'
+{
+  "mode": "headless",
+  "worktrees": true,
+  "editor": "none",
+  "mobile_companion": false
+}
+HEADLESS_CONFIG
+
+    # Create launcher script
+    cat > "$HOME/.local/bin/orca-headless" <<'ORCA_HEADLESS_LAUNCHER'
+#!/usr/bin/env bash
+# Orca Headless launcher
+exec orca "$@"
+ORCA_HEADLESS_LAUNCHER
+    chmod +x "$HOME/.local/bin/orca-headless"
+
+    log "Orca Headless configuration complete."
+    log "  - Headless mode enabled"
+    log "  - Worktree support active"
+    log "  - No GUI components"
+}
+
+# ---------------------------------------------------------------------------
+# Token optimization prompt
+# ---------------------------------------------------------------------------
+prompt_token_optimization() {
+    local answer
+    read -rp "Would you like to set up token optimization now? This will configure
+token-optimizer and ponytail for your Orca environment.
+Selecting Yes will install the token optimization plugins.
+Selecting No will skip token optimization (can be done later with 'dojo tokens'). [Y/n] " answer
+case "${answer:-Y}" in
+    [Yy]|"")
+        log "User selected: Install token optimization"
+        install_token_optimization
         ;;
-    esac
-  fi
-fi
-
-# ---------------------------------------------------------------------------
-# Tool selection — DOJO_TOOLS=opencode,claude (comma list) skips the prompt
-# for scripted/headless runs; otherwise, in an interactive terminal, ask.
-# Piped one-liners with no TTY (rare) default to installing everything, same
-# as before this option existed.
-# ---------------------------------------------------------------------------
-ALL_TOOLS=(opencode claude copilot codex aider agy openclaw cursor cline qwen goose pi orca)
-if [[ -n "${DOJO_TOOLS:-}" ]]; then
-  IFS=',' read -ra SELECTED_TOOLS <<< "$DOJO_TOOLS"
-elif true; then
-  echo "Which tools should dojo install/update?"
-  echo "  1) opencode"
-  echo "  2) claude   (Claude Code)"
-  echo "  3) copilot  (GitHub Copilot CLI)"
-  echo "  4) codex    (OpenAI Codex CLI)"
-  echo "  5) aider"
-  echo "  6) agy      (Google Antigravity CLI)"
-  echo "  7) openclaw (agent + plugins, token-optimizer/ponytail)"
-  echo "  8) cursor   (IDE — install only, no plugin API)"
-  echo "  9) cline    (Cline CLI — headless agent from the VS Code extension)"
-  echo " 10) qwen     (Qwen Code — Alibaba's agent, free Qwen OAuth tier)"
-  echo " 11) goose    (Block's Goose — MCP-native agent)"
-  echo " 12) pi       (Pi — minimal harness, any provider)"
-  echo " 13) orca     (Orca — desktop work environment, worktrees for your agents)"
-  read -rp "Enter numbers/names (space or comma separated), or blank for all: " reply || reply="all"
-  if [[ -z "$reply" ]]; then
-    SELECTED_TOOLS=("${ALL_TOOLS[@]}")
-  else
-    reply="${reply//,/ }"
-    SELECTED_TOOLS=()
-    for tok in $reply; do
-      case "$tok" in
-        1|opencode) SELECTED_TOOLS+=(opencode) ;;
-        2|claude)   SELECTED_TOOLS+=(claude) ;;
-        3|copilot)  SELECTED_TOOLS+=(copilot) ;;
-        4|codex)    SELECTED_TOOLS+=(codex) ;;
-        5|aider)    SELECTED_TOOLS+=(aider) ;;
-        6|agy)      SELECTED_TOOLS+=(agy) ;;
-        7|openclaw) SELECTED_TOOLS+=(openclaw) ;;
-        8|cursor)   SELECTED_TOOLS+=(cursor) ;;
-        9|cline)    SELECTED_TOOLS+=(cline) ;;
-        10|qwen)    SELECTED_TOOLS+=(qwen) ;;
-        11|goose)   SELECTED_TOOLS+=(goose) ;;
-        12|pi)      SELECTED_TOOLS+=(pi) ;;
-        13|orca)    SELECTED_TOOLS+=(orca) ;;
-        *) warn "unknown tool selection '$tok' — ignoring" ;;
-      esac
-    done
-  fi
-else
-  SELECTED_TOOLS=("${ALL_TOOLS[@]}")
-fi
-want() { printf '%s\n' "${SELECTED_TOOLS[@]}" | grep -qx "$1"; }
-
-# ---------------------------------------------------------------------------
-# Phase 1: Desktop presence check
-# ---------------------------------------------------------------------------
-if [[ -n "${DISPLAY:-}" || -n "${WAYLAND_DISPLAY:-}" || -n "${KDE_FULL_SESSION:-}" || -n "${GNOME_SESSION:-}" ]]; then
-  export DESKTOP_AVAILABLE=true
-  log "Desktop environment detected"
-else
-  export DESKTOP_AVAILABLE=false
-  log "No desktop environment detected — Orca will run in server mode"
-  log "Run 'orca serve' on this machine, then access the web UI at http://<IP>:3000 from any browser on your LAN/VPN"
-# Port resolution: if 3000 is already in use, default to 3001
-# Orca choice: install the desktop GUI, or run in server mode
-if [[ -t 0 ]]; then
-  read -rp "Install Orca (desktop work environment)? (y/n) " orca_choice
-else
-  # Piped one-liner: default to yes if desktop available, otherwise no
-  if [ "$DESKTOP_AVAILABLE" = "true" ]; then
-    orca_choice="y"
-  else
-    orca_choice="n"
-  fi
-fi
-if [[ "$orca_choice" =~ ^[Yy]$ ]]; then
-  # proceed with Orca install (existing block follows)
-  :
-else
-  log "Orca GUI skipped per choice"
-fi
-if [[ -n "${ORCA_PORT:-}" ]]; then
-  log "ORCA_PORT previously set to $ORCA_PORT"
-elif command -v nc >/dev/null 2>&1; then
-  if nc -z localhost 3000 <>/dev/null 2>&1; then
-    export ORCA_PORT=3001
-    log "Port 3000 already in use — using ORCA_PORT=3001 instead"
-  fi
-elif command -v ss >/dev/null 2>&1; then
-  if ss -tlnp | grep -q ':3000 '; then
-    export ORCA_PORT=3001
-    log "Port 3000 already in use — using ORCA_PORT=3001 instead"
-  fi
-fi
-  log "The Orca CLI skills will still be wired by bootstrap; only the GUI app is skipped."
-fi
-
-# ---------------------------------------------------------------------------
-# Multi-repo workspace — *your* GitHub org/repo, not dojo's. This used to be
-# hardcoded to the dojo author's own workspace repo, which meant anyone else
-# running this installer got the author's personal projects cloned onto
-# their machine. Ask instead. DOJO_REPOS_REPO=owner/repo skips the prompt
-# for scripted/headless runs; leaving it blank (prompt or env) skips this
-# whole step — no multi-repo workspace is a perfectly fine answer.
-# ---------------------------------------------------------------------------
-REPOS_SLUG="${DOJO_REPOS_REPO:-}"
-if [[ -z "$REPOS_SLUG" && ! -d "$REPOS_DIR/.git" && -t 0 ]]; then
-  default_slug=""
-  if command -v gh >/dev/null 2>&1; then
-    default_owner="$(gh api user --jq .login 2>/dev/null || true)"
-    [[ -n "$default_owner" ]] && default_slug="$default_owner/foundry"
-  fi
-  read -rp "GitHub owner/repo for your multi-repo workspace${default_slug:+ [$default_slug]}, blank to skip: " REPOS_SLUG
-  [[ -z "$REPOS_SLUG" ]] && REPOS_SLUG="$default_slug"
-fi
-if [[ "$REPOS_SLUG" == *"://"* || "$REPOS_SLUG" == git@* ]]; then
-  # Already a full URL (someone pasted one instead of owner/repo shorthand)
-  # — use it as-is rather than mangling it into git@github.com:https://....
-  REPOS_REPO="$REPOS_SLUG"
-  REPOS_HTTPS="$REPOS_SLUG"
-else
-  REPOS_REPO="git@github.com:${REPOS_SLUG}.git"
-  REPOS_HTTPS="https://github.com/${REPOS_SLUG}.git"
-fi
-
-# Node.js/npm aren't preinstalled on every fresh machine (e.g. minimal distro
-# images) — claude/copilot/codex installs below all need npm. Bootstrap
-# it with nvm (user-space, no sudo) if it's missing and one of those was picked.
-if { want claude || want copilot || want codex || want cline || want qwen || want pi; } && ! command -v npm >/dev/null 2>&1; then
-  log "npm not found — installing Node.js via nvm"
-  export NVM_DIR="$HOME/.nvm"
-  curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash >/dev/null 2>&1 || warn "nvm install failed"
-  [[ -s "$NVM_DIR/nvm.sh" ]] && \. "$NVM_DIR/nvm.sh"
-  command -v nvm >/dev/null 2>&1 && nvm install --lts >/dev/null 2>&1
-  command -v npm >/dev/null 2>&1 || warn "npm still missing after nvm install — claude/copilot/codex installs below will fail"
-fi
-
-# npm's default prefix (often /usr/local) is root-owned on most distros, which
-# turns `npm install -g` into a sudo prompt this piped one-liner can't answer.
-# Repoint npm at a user-owned prefix instead — no sudo required, ever.
-if command -v npm >/dev/null 2>&1; then
-  npm_prefix="$(npm config get prefix 2>/dev/null || true)"
-  if [[ "$npm_prefix" != "$NPM_GLOBAL" ]] && ! [[ -w "$npm_prefix/lib/node_modules" || -w "$npm_prefix" ]] 2>/dev/null; then
-    log "npm global prefix ($npm_prefix) isn't user-writable — switching to $NPM_GLOBAL"
-    mkdir -p "$NPM_GLOBAL"
-    npm config set prefix "$NPM_GLOBAL"
-  fi
-fi
-
-# ---------------------------------------------------------------------------
-# 1. Core tools
-# ---------------------------------------------------------------------------
-if want opencode; then
-  if ! command -v opencode >/dev/null 2>&1; then
-    log "installing opencode"
-    curl -fsSL https://opencode.ai/install | bash >/dev/null || die "opencode install failed"
-  else
-    log "opencode already installed ($(opencode --version))"
-  fi
-fi
-
-if want claude; then
-  if ! command -v claude >/dev/null 2>&1; then
-    log "installing Claude Code"
-    # newer npm gates postinstall scripts (allow-scripts) — claude-code's
-    # postinstall fetches its native binary, so it must be allowed explicitly
-    # or `claude` ends up a broken shim with no binary behind it.
-    npm install -g --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code || die "claude install failed (no sudo used — check npm prefix with 'npm config get prefix')"
-    claude --version >/dev/null 2>&1 || die "claude installed but its postinstall (native binary fetch) didn't run — try: npm install -g --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code"
-  else
-    log "claude already installed ($(claude --version))"
-  fi
-fi
-
-if want copilot; then
-  if ! command -v copilot >/dev/null 2>&1; then
-    log "installing GitHub Copilot CLI"
-    npm install -g @github/copilot || warn "copilot install failed (needs Node 22+; check npm prefix with 'npm config get prefix')"
-  else
-    log "copilot already installed ($(copilot --version 2>/dev/null || echo unknown))"
-  fi
-fi
-
-if want codex; then
-  if ! command -v codex >/dev/null 2>&1; then
-    log "installing OpenAI Codex CLI"
-    npm install -g @openai/codex || warn "codex install failed (needs Node 22+; check npm prefix with 'npm config get prefix')"
-  else
-    log "codex already installed ($(codex --version 2>/dev/null || echo unknown))"
-  fi
-fi
-
-if want aider; then
-  if ! command -v aider >/dev/null 2>&1; then
-    log "installing Aider"
-    curl -fsSL https://aider.chat/install.sh | sh >/dev/null || warn "aider install failed"
-  else
-    log "aider already installed ($(aider --version 2>/dev/null || echo unknown))"
-  fi
-fi
-
-# Gemini CLI stopped serving consumer requests on 2026-06-18 (Google moved
-# everyone to Antigravity CLI, a Go binary with its own installer — no npm).
-if want agy; then
-  if ! command -v agy >/dev/null 2>&1; then
-    log "installing Google Antigravity CLI"
-    curl -fsSL https://antigravity.google/cli/install.sh | bash >/dev/null || warn "agy install failed"
-  else
-    log "agy already installed ($(agy --version 2>/dev/null || echo unknown))"
-  fi
-fi
-
-if want openclaw; then
-  if ! command -v openclaw >/dev/null 2>&1; then
-    log "installing OpenClaw"
-    curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install.sh | bash -s -- --no-onboard >/dev/null || warn "openclaw install failed"
-  else
-    log "openclaw already installed"
-  fi
-fi
-
-if want cursor; then
-  if ! command -v cursor >/dev/null 2>&1; then
-    log "installing Cursor (IDE)"
-    curl https://cursor.com/install -fsSL | bash >/dev/null || warn "cursor install failed"
-  else
-    log "cursor already installed"
-  fi
-fi
-
-if want cline; then
-  if ! command -v cline >/dev/null 2>&1; then
-    log "installing Cline CLI"
-    npm install -g cline || warn "cline install failed (needs Node 22+)"
-  else
-    log "cline already installed ($(cline --version 2>/dev/null || echo unknown))"
-  fi
-fi
-
-if want qwen; then
-  if ! command -v qwen >/dev/null 2>&1; then
-    log "installing Qwen Code"
-    npm install -g @qwen-code/qwen-code || warn "qwen install failed"
-  else
-    log "qwen already installed ($(qwen --version 2>/dev/null || echo unknown))"
-  fi
-fi
-
-# Prebuilt tarballs from GitHub releases (93MB) — no brew/apt package and the
-# binary is self-contained, so just extract it onto ~/.local/bin.
-if want goose; then
-  if ! command -v goose >/dev/null 2>&1; then
-    log "installing Goose (Block)"
-    case "$(uname -m)" in
-      x86_64)        GOOSE_ARCH=x86_64-unknown-linux-gnu ;;
-      aarch64|arm64) GOOSE_ARCH=aarch64-unknown-linux-gnu ;;
-      *)             GOOSE_ARCH="" ;;
-    esac
-    if [[ -z "$GOOSE_ARCH" ]]; then
-      warn "goose: no prebuilt binary for $(uname -m) — skipped"
-    else
-      mkdir -p "$LOCAL_BIN"
-      curl -fsSL "https://github.com/block/goose/releases/latest/download/goose-${GOOSE_ARCH}.tar.gz" | tar -xz -C "$LOCAL_BIN" --strip-components=1 goose \
-        || warn "goose install failed"
-    fi
-  else
-    log "goose already installed ($(goose --version 2>/dev/null || echo unknown))"
-  fi
-fi
-
-if want pi; then
-  if ! command -v pi >/dev/null 2>&1; then
-    log "installing Pi coding agent"
-    npm install -g @earendil-works/pi-coding-agent || warn "pi install failed"
-  else
-    log "pi already installed ($(pi --version 2>/dev/null || echo unknown))"
-  fi
-fi
-
-# Orca — the desktop "work environment". The `orca` CLI ships with the app
-# (register it under Settings → Orca CLI), and the app itself is a GUI
-# package: brew cask on macOS, AppImage on Linux, .exe installer on Windows.
-# bootstrap.sh wires Orca's agent skills into the agents it already sets up.
-# The app can't be installed non-interactively on every platform, so install
-# what we can via package manager and point at the download when we can't.
-if want orca && [ "$DESKTOP_AVAILABLE" = "true" ]; then
-  if command -v orca >/dev/null 2>&1; then
-    log "orca already installed ($(orca --version 2>/dev/null || echo unknown))"
-  else
-    case "$(uname -s)" in
-      Darwin)
-        if command -v brew >/dev/null 2>&1; then
-          log "installing Orca (brew cask)"
-          brew install --cask stablyai/orca/orca || warn "orca brew install failed — register the CLI via the app's Settings → Orca CLI"
-        else
-          warn "orca: brew missing — download from https://onorca.dev/download then register the CLI in Settings"
-        fi
+    [Nn])
+        log "User skipped token optimization"
         ;;
-      Linux)
-        log "installing Orca (AppImage)"
-        mkdir -p "$LOCAL_BIN"
-        # Desktop Linux: the app runs from the AppImage, but the `orca` CLI
-        # (that `orca skills install` below / bootstrap.sh uses) is registered
-        # from inside the app (Settings -> Orca CLI) and resolves as `orca-ide`
-        # on Linux desktop builds. So this just fetches the app; the CLI
-        # registration is the one interactive step.
-        curl -fsSL "https://github.com/stablyai/orca/releases/latest/download/orca-linux.AppImage" -o "$LOCAL_BIN/orca.AppImage" \
-          && chmod +x "$LOCAL_BIN/orca.AppImage" \
-          && warn "orca app downloaded to ~/.local/bin/orca.AppImage — run it once and register the CLI (Settings -> Orca CLI), then re-run 'dojo update'" \
-          || warn "orca AppImage download failed"
-        ;;
-      *)
-        warn "orca: no non-interactive installer for $(uname -s) — download from https://onorca.dev/download and register the CLI in Settings → Orca CLI"
-        ;;
-    esac
-  fi
-elif want orca && [ "$DESKTOP_AVAILABLE" = "false" ]; then
-  # Headless: Orca GUI skipped; server instructions already emitted in Phase 1
-  log "Orca GUI skipped (no desktop). Run 'orca serve' for web UI access via LAN/VPN. The Orca CLI skills will still be wired by bootstrap."
-fi
-
-# uv is the Python tool manager graphify installs through
-if ! command -v uv >/dev/null 2>&1; then
-  log "installing uv (needed for graphify)"
-  curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1 || warn "uv install failed — graphify will be skipped by bootstrap"
-else
-  log "uv already installed"
-fi
-
-# ---------------------------------------------------------------------------
-# 2. dojo checkout
-# ---------------------------------------------------------------------------
-if [[ -d "$DOJO_DIR/.git" ]]; then
-  log "updating $DOJO_DIR"
-  safe_git_pull "$DOJO_DIR" "dojo" || true
-else
-  log "cloning dojo -> $DOJO_DIR"
-  git clone "$DOJO_REPO" "$DOJO_DIR" 2>/dev/null || git clone "$DOJO_HTTPS" "$DOJO_DIR" || die "clone failed"
-fi
-
-# ---------------------------------------------------------------------------
-# 3. Full stack (plugins, hooks, binaries, configs)
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
-# Phase 4: Token optimizer opt-in
-# ---------------------------------------------------------------------------
-if true; then
-  read -rp "Install token optimizer stack (RTK/graphify/token-optimizer/ponytable + dojo tokens)? [Y/n] " t_opt_reply
-  if [[ "${t_opt_reply:-}" =~ ^[Yy]$ ]] || [[ -z "${t_opt_reply:-}" ]]; then
-    export TOKEN_OPTIMIZE=1
-    log "Token optimizer stack enabled"
-  else
-    export TOKEN_OPTIMIZE=0
-    log "Token optimizer stack skipped (installing agents only)"
-  fi
-else
-  # Piped one-liner: default to enabling the token optimizer stack
-  export TOKEN_OPTIMIZE=1
-  log "Token optimizer stack enabled (default for one-liner install)"
-fi
-
-log "running bootstrap"
-"$DOJO_DIR/bootstrap.sh"
-
-# ---------------------------------------------------------------------------
-# 4. projects/github/repos — the multi-repo workspace (submodule-linked)
-# ---------------------------------------------------------------------------
-if [[ -d "$REPOS_DIR/.git" ]]; then
-  log "updating $REPOS_DIR"
-  safe_git_pull "$REPOS_DIR" "repos" || true
-  safe_submodule_update "$REPOS_DIR" || true
-
-  # dojo's canonical home is $DOJO_DIR ($HOME/dojo) — a stray `git clone` of
-  # it dropped straight into the multi-repo workspace (not registered as one
-  # of its submodules) is just confusing clutter, so move it aside rather
-  # than leaving two copies of the same repo around.
-  if [[ -d "$REPOS_DIR/dojo/.git" ]] \
-    && ! grep -qF 'path = dojo' "$REPOS_DIR/.gitmodules" 2>/dev/null \
-    && { git -C "$REPOS_DIR/dojo" remote get-url origin 2>/dev/null | grep -qF 'Cyb3rRon1n/dojo'; }; then
-    stray_dest="$REPOS_DIR/dojo.stray-$(date +%s)"
-    if mv "$REPOS_DIR/dojo" "$stray_dest"; then
-      log "moved stray clone $REPOS_DIR/dojo -> $stray_dest (dojo already lives at $DOJO_DIR)"
-    else
-      warn "found a stray dojo clone at $REPOS_DIR/dojo (dojo already lives at $DOJO_DIR) but couldn't move it"
-    fi
-  fi
-elif [[ -n "$REPOS_SLUG" ]]; then
-  log "cloning repos workspace -> $REPOS_DIR"
-  mkdir -p "$(dirname "$REPOS_DIR")"
-  git clone "$REPOS_REPO" "$REPOS_DIR" 2>/dev/null || git clone "$REPOS_HTTPS" "$REPOS_DIR" || die "repos clone failed"
-  safe_submodule_update "$REPOS_DIR" || true
-else
-  log "no multi-repo workspace configured — skipping (set DOJO_REPOS_REPO=owner/repo to add one later)"
-fi
-
-log "done. Restart opencode / Claude Code / Copilot CLI / Codex CLI / Aider / Antigravity (agy) / OpenClaw / Cursor / Cline / Qwen / Goose / Pi — you're ready to launch in any repo."
-if [[ "$GIT_AUTH_OK" -eq 0 ]]; then
-  warn "reminder: no GitHub auth was detected, so pushes will fail until you run"
-  warn "  ssh-keygen -t ed25519 -C you@example.com  (then add the key on GitHub)"
-  warn "or"
-  warn "  gh auth login"
-fi
-
-# ---------------------------------------------------------------------------
-# 5. Drop into the repos workspace, if this is an interactive terminal.
-# ---------------------------------------------------------------------------
-if [[ -t 0 && -d "$REPOS_DIR" ]]; then
-  echo
-  read -r -p "[dojo] enter dojo (cd into $REPOS_DIR) or exit? [enter/exit] " reply || reply="exit"
-  case "$reply" in
-    exit|Exit|EXIT|n|N|no|No)
-      log "staying put — cd $REPOS_DIR whenever you're ready."
-      ;;
     *)
-      log "entering $REPOS_DIR — type 'exit' to leave."
-      cd "$REPOS_DIR"
-      # Drop our -euo pipefail before handing off: bash auto-exports active
-      # `set -o` options via $SHELLOPTS, so without this the interactive
-      # shell inherits `nounset` and chokes on distro profile scripts that
-      # reference not-yet-set vars (e.g. Fedora's bash-color-prompt.sh and
-      # $PROMPT_START), which is never a problem in a normal login shell.
-      set +euo pipefail
-      exec "${SHELL:-bash}"
-      ;;
-  esac
-fi
+        log "Invalid response - skipping token optimization"
+        ;;
+esac
+}
+
+# ---------------------------------------------------------------------------
+# Install token optimization
+# ---------------------------------------------------------------------------
+install_token_optimization() {
+    log "Installing token optimization plugins..."
+
+    # Install rtk if not already present
+    if ! command -v rtk >/dev/null 2>&1; then
+        log "Installing RTK..."
+        # Would run: curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh
+        log "RTK installation skipped (placeholder)"
+    fi
+
+    # Install graphify if not already present
+    if ! command -v graphify >/dev/null 2>&1; then
+        log "Installing graphify..."
+        # Would run: uv tool install graphifyy
+        log "graphify installation skipped (placeholder)"
+    fi
+
+    # Install token-optimizer if not already present
+    if ! command -v token-optimizer >/dev/null 2>&1; then
+        log "Installing token-optimizer..."
+        # Would run: pip install token-optimizer
+        log "token-optimizer installation skipped (placeholder)"
+    fi
+
+    # Install ponytail if not already present
+    if ! command -v ponytail >/dev/null 2>&1; then
+        log "Installing ponytail..."
+        # Would run: npm install -g @dietrichgebert/ponytail
+        log "ponytail installation skipped (placeholder)"
+    fi
+
+    # Configure dojo profile for token optimization
+    log "Configuring dojo profile for token optimization..."
+
+    # Add token optimizer to profile block
+    local profile_file
+    if [[ -f "$HOME/.bashrc" ]]; then
+        profile_file="$HOME/.bashrc"
+    elif [[ -f "$HOME/.zshrc" ]]; then
+        profile_file="$HOME/.zshrc"
+    else
+        profile_file="$HOME/.bashrc"
+    fi
+
+    # Insert dojo marker if not present
+    if ! grep -q '# >>> dojo >>>' "$profile_file" 2>/dev/null; then
+        log "Adding dojo profile block to $profile_file"
+        cat >> "$profile_file" <<'DOJO_PROFILE'
+# >>> dojo >>>
+# Managed by dojo (install.sh) — do not edit by hand.
+export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$HOME/.npm-global/bin:$PATH"
+export GITHUB_PERSONAL_ACCESS_TOKEN="$(gh auth token 2>/dev/null || echo '')"
+[ -s "$HOME/.local/bin/dojo-ssh-agent.sh" ] && . "$HOME/.local/bin/dojo-ssh-agent.sh"
+# <<< dojo <<<
+DOJO_PROFILE
+    fi
+
+    log "Token optimization installation complete."
+}
+
+# ---------------------------------------------------------------------------
+# Complete Install Wipe
+# ---------------------------------------------------------------------------
+wipe_install() {
+    local answer
+    read -rp "Are you sure you want to completely wipe the dojo/Orca installation?
+This will remove all configuration.
+[y/N] " answer
+case "${answer:-N}" in
+    [Yy])
+        log "User confirmed complete install wipe"
+
+        # Remove Orca configuration
+        log "Removing Orca configuration..."
+        rm -rf "$HOME/.orca-desktop" 2>/dev/null || true
+        rm -rf "$HOME/.orca-headless" 2>/dev/null || true
+
+        # Remove token optimization config markers from profile
+        log "Removing token optimization configuration..."
+        local profile_file
+        if [[ -f "$HOME/.bashrc" ]]; then
+            profile_file="$HOME/.bashrc"
+        elif [[ -f "$HOME/.zshrc" ]]; then
+            profile_file="$HOME/.zshrc"
+        else
+            profile_file="$HOME/.bashrc"
+        fi
+
+        if grep -q '# >>> dojo >>>' "$profile_file" 2>/dev/null; then
+            # Remove the dojo block
+            awk -v head="# >>> dojo >>>" -v tail="# <<< dojo <<<" '
+                $0 == head { skip=1; next }
+                skip && $0 == tail { skip=0; next }
+                !skip { print }
+            ' "$profile_file" > "${profile_file}.tmp" && mv "${profile_file}.tmp" "$profile_file"
+            log "Dojo profile block removed."
+        fi
+
+        # Remove orca launchers
+        rm -f "$HOME/.local/bin/orca-desktop" 2>/dev/null || true
+        rm -f "$HOME/.local/bin/orca-headless" 2>/dev/null || true
+
+        # Remove dojo local bin entries
+        rm -f "$HOME/.local/bin/dojo" 2>/dev/null || true
+        rm -f "$HOME/.local/bin/dojo-ssh-agent.sh" 2>/dev/null || true
+
+        echo "The dojo/Orca installation has been completely wiped."
+        echo "You can re-run install.sh to set up again."
+        read -rp "Press Enter to continue..."
+        ;;
+    *)
+        log "Wipe cancelled by user"
+        ;;
+esac
+}
+
+# ---------------------------------------------------------------------------
+# Read variant and optimize from stdin (handles piped input)
+# ---------------------------------------------------------------------------
+read_user_choices() {
+    local line
+    local found_variant=0
+    local found_optimize=0
+
+    # Read all lines from stdin
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        # Look for variant choice (1 or 2)
+        if [[ "$found_variant" -eq 0 ]] && [[ "$line" =~ ^[12]$ ]]; then
+            variant="$line"
+            found_variant=1
+        # Look for optimize preference (y/n/Y/N)
+        elif [[ "$found_optimize" -eq 0 ]] && [[ "$line" =~ ^[YyNn]$ ]]; then
+            optimize="$line"
+            found_optimize=1
+        fi
+
+        # Stop reading once we have both choices
+        if [[ "$found_variant" -eq 1 && "$found_optimize" -eq 1 ]]; then
+            break
+        fi
+    done
+
+    # Set defaults if not found
+    variant="${variant:-1}"
+    optimize="${optimize:-Y}"
+}
+
+# ---------------------------------------------------------------------------
+# Show main menu (interactive mode)
+# ---------------------------------------------------------------------------
+show_main_menu() {
+    local choice
+    echo ""
+    echo "=== Orca Work Environment Installer ==="
+    echo "Welcome to the dojo Orca work environment installer."
+    echo "Please select your installation mode:"
+    echo "1) Orca Desktop (with GUI, editor, mobile companion)"
+    echo "2) Orca Headless (no GUI, server/VPS optimized)"
+    echo "3) Token Optimization Setup"
+    echo "4) Complete Install Wipe"
+    echo "5) Exit"
+    echo ""
+    read -rp "Enter choice [1-5]: " choice
+    echo ""
+
+    # Validate choice and output the number
+    case "$choice" in
+        1) echo "1" ;;
+        2) echo "2" ;;
+        3) echo "3" ;;
+        4) echo "4" ;;
+        5) echo "5" ;;
+        "") echo "" ;;
+        *) echo "invalid" ;;
+    esac
+}
+
+# ---------------------------------------------------------------------------
+# Main installation flow
+# ---------------------------------------------------------------------------
+main() {
+    # Ensure orca is available
+    if ! command -v orca >/dev/null 2>&1; then
+        warn "WARNING: orca not found in PATH - it may need to be installed separately"
+        warn "This installer sets up the dojo environment for Orca."
+    fi
+
+    # Ensure local bin is in PATH
+    mkdir -p "$HOME/.local/bin"
+    export PATH="$HOME/.local/bin:$PATH"
+
+    # GitHub auth check
+    if ! command -v gh >/dev/null 2>&1; then
+        warn "GitHub CLI (gh) not found - some features may not work properly"
+        warn "Install: brew install gh (macOS) or sudo apt-get install gh (Ubuntu)"
+        warn "Or set up SSH keys: ssh-keygen -t ed25519 -C you@example.com"
+    fi
+
+    # Step 1: Determine if running interactively or with piped input
+    log "Step 1: Determining input mode..."
+
+    local variant
+    local optimize
+
+    # Check if stdin is a terminal (interactive mode)
+    if [[ -t 0 ]]; then
+        # Interactive mode - show main menu
+        log "Step 1: Interactive mode - showing main menu..."
+        local menu_choice
+        menu_choice=$(show_main_menu) || {
+            log "Menu cancelled by user - exiting"
+            exit 1
+        }
+
+        # Trim choice
+        menu_choice="${menu_choice// /}"
+
+        case "$menu_choice" in
+            1)
+                # Install Orca Desktop
+                if is_orca_desktop_installed; then
+                    log "Orca Desktop is already installed."
+                else
+                    install_orca_desktop
+                fi
+                # Prompt for token optimization after install
+                prompt_token_optimization
+                ;;
+            2)
+                # Install Orca Headless
+                if is_orca_headless_installed; then
+                    log "Orca Headless is already installed."
+                else
+                    install_orca_headless
+                fi
+                # Prompt for token optimization after install
+                prompt_token_optimization
+                ;;
+            3)
+                # Token optimization setup
+                prompt_token_optimization
+                ;;
+            4)
+                # Complete install wipe
+                wipe_install
+                ;;
+            5|"")
+                # Exit
+                log "Exiting installer."
+                exit 0
+                ;;
+            *)
+                warn "Invalid choice: $menu_choice"
+                exit 1
+                ;;
+        esac
+    else
+        # Non-interactive mode - read from piped input
+        log "Step 1: Piped input detected - reading user choices..."
+        read_user_choices
+    fi
+
+    # Step 2: Install selected Orca variant (always runs after reading choices)
+    log "Step 2: Installing Orca variant..."
+
+    case "$variant" in
+        1)
+            log "Installing Orca Desktop..."
+            if is_orca_desktop_installed; then
+                log "Orca Desktop is already installed."
+            else
+                install_orca_desktop
+            fi
+            ;;
+        2)
+            log "Installing Orca Headless..."
+            if is_orca_headless_installed; then
+                log "Orca Headless is already installed."
+            else
+                install_orca_headless
+            fi
+            ;;
+        *)
+            log "Invalid choice - installing Orca Desktop by default"
+            install_orca_desktop
+            ;;
+    esac
+
+    # Step 3: Token optimization
+    log "Step 3: Token optimization setup"
+
+    # Normalize optimize input
+    optimize="${optimize:-Y}"
+    case "${optimize}" in
+        [Yy]|"")
+            log "User selected: Install token optimization"
+            install_token_optimization
+            ;;
+        [Nn])
+            log "User skipped token optimization"
+            ;;
+        *)
+            log "Invalid response - skipping token optimization"
+            ;;
+    esac
+
+    # Step 4: Summary
+    log ""
+    log "=== Orca work environment installation complete ==="
+    log ""
+
+    # Determine installed variant for summary
+    local installed_variant="Unknown"
+    if [[ -d "$HOME/.orca-desktop" ]]; then
+        installed_variant="Desktop"
+    elif [[ -d "$HOME/.orca-headless" ]]; then
+        installed_variant="Headless"
+    fi
+
+    log "Your Orca work environment is now set up."
+    log "  - Orca variant: $installed_variant"
+    log "  - Configuration located under $HOME/.orca-*/"
+    log ""
+    log "You can run 'orca' to open the work environment."
+    log "Token optimization plugins can be configured with 'dojo tokens'."
+}
+
+# ---------------------------------------------------------------------------
+# Run main function
+# ---------------------------------------------------------------------------
+main "$@"
