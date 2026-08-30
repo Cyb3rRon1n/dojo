@@ -255,64 +255,36 @@ esac
 }
 
 # ---------------------------------------------------------------------------
-# Read variant and optimize from stdin (handles piped input)
+# Read user choice from input (handles both interactive and piped)
 # ---------------------------------------------------------------------------
-read_user_choices() {
+read_choice() {
     local line
-    local found_variant=0
-    local found_optimize=0
+    local found=0
 
-    # Read all lines from stdin
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        # Look for variant choice (1 or 2)
-        if [[ "$found_variant" -eq 0 ]] && [[ "$line" =~ ^[12]$ ]]; then
-            variant="$line"
-            found_variant=1
-        # Look for optimize preference (y/n/Y/N)
-        elif [[ "$found_optimize" -eq 0 ]] && [[ "$line" =~ ^[YyNn]$ ]]; then
-            optimize="$line"
-            found_optimize=1
-        fi
+    # Try to read from /dev/tty for interactive input
+    if [ -t 1 ] && [ -t 0 ]; then
+        # We're in a TTY - read directly from terminal
+        read -rp "Enter choice [1-5]: " choice
+    else
+        # No TTY - read from stdin (piped input)
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            # Look for choice (1-5) or optimize (y/n)
+            if [[ "$found" -eq 0 ]] && [[ "$line" =~ ^[1-5]$ ]]; then
+                choice="$line"
+                found=1
+            elif [[ "$found" -eq 0 ]] && [[ "$line" =~ ^[YyNn]$ ]]; then
+                optimize="$line"
+                found=1
+            fi
+            if [[ "$found" -eq 1 ]]; then
+                break
+            fi
+        done
+    fi
 
-        # Stop reading once we have both choices
-        if [[ "$found_variant" -eq 1 && "$found_optimize" -eq 1 ]]; then
-            break
-        fi
-    done
-
-    # Set defaults if not found
-    variant="${variant:-1}"
+    # Set defaults
+    choice="${choice:-}"
     optimize="${optimize:-Y}"
-}
-
-# ---------------------------------------------------------------------------
-# Show main menu (interactive mode)
-# ---------------------------------------------------------------------------
-show_main_menu() {
-    local choice
-    echo ""
-    echo "=== Orca Work Environment Installer ==="
-    echo "Welcome to the dojo Orca work environment installer."
-    echo "Please select your installation mode:"
-    echo "1) Orca Desktop (with GUI, editor, mobile companion)"
-    echo "2) Orca Headless (no GUI, server/VPS optimized)"
-    echo "3) Token Optimization Setup"
-    echo "4) Complete Install Wipe"
-    echo "5) Exit"
-    echo ""
-    read -rp "Enter choice [1-5]: " choice
-    echo ""
-
-    # Validate choice and output the number
-    case "$choice" in
-        1) echo "1" ;;
-        2) echo "2" ;;
-        3) echo "3" ;;
-        4) echo "4" ;;
-        5) echo "5" ;;
-        "") echo "" ;;
-        *) echo "invalid" ;;
-    esac
 }
 
 # ---------------------------------------------------------------------------
@@ -336,72 +308,15 @@ main() {
         warn "Or set up SSH keys: ssh-keygen -t ed25519 -C you@example.com"
     fi
 
-    # Step 1: Determine if running interactively or with piped input
-    log "Step 1: Determining input mode..."
+    # Read user choices
+    log "Reading user choices..."
+    read_choice
 
-    local variant
-    local optimize
+    local variant="${choice:-1}"
+    local optimize="${optimize:-Y}"
 
-    # Check if stdin is a terminal (interactive mode)
-    if [[ -t 0 ]]; then
-        # Interactive mode - show main menu
-        log "Step 1: Interactive mode - showing main menu..."
-        local menu_choice
-        menu_choice=$(show_main_menu) || {
-            log "Menu cancelled by user - exiting"
-            exit 1
-        }
-
-        # Trim choice
-        menu_choice="${menu_choice// /}"
-
-        case "$menu_choice" in
-            1)
-                # Install Orca Desktop
-                if is_orca_desktop_installed; then
-                    log "Orca Desktop is already installed."
-                else
-                    install_orca_desktop
-                fi
-                # Prompt for token optimization after install
-                prompt_token_optimization
-                ;;
-            2)
-                # Install Orca Headless
-                if is_orca_headless_installed; then
-                    log "Orca Headless is already installed."
-                else
-                    install_orca_headless
-                fi
-                # Prompt for token optimization after install
-                prompt_token_optimization
-                ;;
-            3)
-                # Token optimization setup
-                prompt_token_optimization
-                ;;
-            4)
-                # Complete install wipe
-                wipe_install
-                ;;
-            5|"")
-                # Exit
-                log "Exiting installer."
-                exit 0
-                ;;
-            *)
-                warn "Invalid choice: $menu_choice"
-                exit 1
-                ;;
-        esac
-    else
-        # Non-interactive mode - read from piped input
-        log "Step 1: Piped input detected - reading user choices..."
-        read_user_choices
-    fi
-
-    # Step 2: Install selected Orca variant (always runs after reading choices)
-    log "Step 2: Installing Orca variant..."
+    # Step 1: Install selected Orca variant
+    log "Step 1: Installing Orca variant..."
 
     case "$variant" in
         1)
@@ -426,8 +341,8 @@ main() {
             ;;
     esac
 
-    # Step 3: Token optimization
-    log "Step 3: Token optimization setup"
+    # Step 2: Token optimization
+    log "Step 2: Token optimization setup"
 
     # Normalize optimize input
     optimize="${optimize:-Y}"
@@ -444,7 +359,7 @@ main() {
             ;;
     esac
 
-    # Step 4: Summary
+    # Step 3: Summary
     log ""
     log "=== Orca work environment installation complete ==="
     log ""
