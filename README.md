@@ -89,7 +89,10 @@ is a no-op if already done.
 > with zero Orca-side setup. bootstrap.sh wires Orca's native agent skills
 > (`orca-cli` / `orchestration` / `computer-use`) headlessly into those agents;
 > only the GUI features (worktrees, Design Mode, mobile) need the app paired
-> once.
+> once. Those three native skills are the only ones dojo installs for you —
+> Orca has no public skill/plugin catalog, so any shared skill bundle you
+> later want is installed from its share link **inside the app** (Skills →
+> Install from link), not by dojo.
 
 dojo never force-installs a tool you didn't ask for — `bootstrap.sh` only
 configures what's already present on the machine (`install.sh` is the one
