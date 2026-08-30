@@ -47,6 +47,26 @@ is_orca_headless_installed() {
 }
 
 # ---------------------------------------------------------------------------
+# Resolve the stablyai Orca CLI. The 'orca' name is often owned by the GNOME
+# screen reader (which rejects subcommands with a plain-text error), so prefer
+# `orca-ide` when present, else a real `orca` proved by it answering the
+# worktree query with JSON.
+# ---------------------------------------------------------------------------
+find_orca() {
+    local c out
+    for c in orca-ide orca; do
+        if command -v "$c" >/dev/null 2>&1; then
+            out="$("$c" worktree ps --json 2>/dev/null || true)"
+            if printf '%s' "$out" | grep -qE '^[\[{]'; then
+                printf '%s\n' "$c"
+                return 0
+            fi
+        fi
+    done
+    return 1
+}
+
+# ---------------------------------------------------------------------------
 # Install Orca Desktop
 # ---------------------------------------------------------------------------
 install_orca_desktop() {
@@ -66,10 +86,16 @@ install_orca_desktop() {
 DESKTOP_CONFIG
 
     # Create launcher script
-    cat > "$HOME/.local/bin/orca-desktop" <<'ORCA_DESKTOP_LAUNCHER'
+    local orca_cmd
+    orca_cmd="$(find_orca)" || orca_cmd="orca"
+    cat > "$HOME/.local/bin/orca-desktop" <<ORCA_DESKTOP_LAUNCHER
 #!/usr/bin/env bash
 # Orca Desktop launcher
-exec orca "$@"
+ORCA="$orca_cmd"
+if command -v "\$ORCA" >/dev/null 2>&1; then
+    exec "\$ORCA" open "\$@"
+fi
+exec orca "\$@"
 ORCA_DESKTOP_LAUNCHER
     chmod +x "$HOME/.local/bin/orca-desktop"
 
@@ -99,10 +125,16 @@ install_orca_headless() {
 HEADLESS_CONFIG
 
     # Create launcher script
-    cat > "$HOME/.local/bin/orca-headless" <<'ORCA_HEADLESS_LAUNCHER'
+    local orca_cmd
+    orca_cmd="$(find_orca)" || orca_cmd="orca"
+    cat > "$HOME/.local/bin/orca-headless" <<ORCA_HEADLESS_LAUNCHER
 #!/usr/bin/env bash
 # Orca Headless launcher
-exec orca "$@"
+ORCA="$orca_cmd"
+if command -v "\$ORCA" >/dev/null 2>&1; then
+    exec "\$ORCA" serve "\$@"
+fi
+exec orca "\$@"
 ORCA_HEADLESS_LAUNCHER
     chmod +x "$HOME/.local/bin/orca-headless"
 
