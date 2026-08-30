@@ -137,6 +137,24 @@ find_tool() {
   return 1
 }
 
+# Resolve the stablyai Orca CLI. The 'orca' name is often owned by the GNOME
+# screen reader (which rejects subcommands with a plain-text error), so prefer
+# `orca-ide` when present, else a real `orca` proved by it answering the
+# worktree query with JSON.
+find_orca() {
+  local c out
+  for c in orca-ide orca; do
+    if command -v "$c" >/dev/null 2>&1; then
+      out="$("$c" worktree ps --json 2>/dev/null || true)"
+      if printf '%s' "$out" | grep -qE '^[\[{]'; then
+        printf '%s\n' "$c"
+        return 0
+      fi
+    fi
+  done
+  return 1
+}
+
 ver_of() {
   local p v
   if p="$(find_tool "$1")" && v="$("$p" --version 2>/dev/null | head -1)" && [[ -n "$v" ]]; then
@@ -174,7 +192,7 @@ cmd_status() {
   echo "plugins:   $(p="$(find_tool claude)" && "$p" plugin list 2>/dev/null | grep -ciE 'ponytail|token-optimizer|superpowers' || echo 0) of 3 (claude)"
   echo "rtk:       $(ver_of rtk)"
   echo "graphify:  $(ver_of graphify)"
-  echo "orca:      $(ver_of orca)"
+  echo "orca:      $(find_orca 2>/dev/null || echo MISSING)"
   echo "auth:      $(git_auth_status)"
 }
 
@@ -386,12 +404,19 @@ cmd_repos() {
 # so command -v can't tell stablyai's Orca from it, and both exit 0 even on
 # nonsense flags. Real JSON worktrees are the only unambiguous signal.
 cmd_workspace() {
-  local out
-  if ! out="$(orca worktree ps --json 2>/dev/null)"; then
+  local out orca_cmd
+  orca_cmd="$(find_orca 2>/dev/null)" || orca_cmd=""
+  if [[ -z "$orca_cmd" ]]; then
     echo "[dojo] no stablyai Orca worktree CLI addressable (missing, or its name is" >&2
     echo "[dojo] taken by another 'orca' like the GNOME screen reader)." >&2
     echo "[dojo] Install the Orca desktop app (https://onorca.dev/download), register its CLI" >&2
     echo "[dojo] (Settings -> General -> Orca CLI), then run 'dojo update'." >&2
+    return 1
+  fi
+  if ! out="$("$orca_cmd" worktree ps --json 2>/dev/null)"; then
+    echo "[dojo] Orca CLI responds but returned no worktrees." >&2
+    echo "[dojo] Launch the Orca desktop app once (worktrees need a running Orca), then" >&2
+    echo "[dojo] re-run 'dojo workspace'." >&2
     return 1
   fi
   if ! printf '%s' "$out" | grep -qE '(\[|\{)\s*"?(id|worktrees|name)'; then
