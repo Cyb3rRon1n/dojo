@@ -192,6 +192,42 @@ install_token_optimization() {
 }
 
 # ---------------------------------------------------------------------------
+# prompt_repos_setup — offer to clone the user's GitHub repos into
+# ~/projects/github/repos. Delegates to 'dojo repos setup' (single source of
+# the clone logic); that script is always on disk since install.sh runs from
+# inside the dojo repo.
+# ---------------------------------------------------------------------------
+prompt_repos_setup() {
+    local dojo_script="" answer owner=""
+    if [[ -n "${DOJO_DIR:-}" && -x "$DOJO_DIR/dojo" ]]; then
+        dojo_script="$DOJO_DIR/dojo"
+    elif [[ -x "$(dirname "$0")/dojo" ]]; then
+        dojo_script="$(cd "$(dirname "$0")" && pwd)/dojo"
+    fi
+    [[ -n "$dojo_script" ]] || dojo_script="dojo"
+
+    if [[ ! -t 0 ]]; then
+        log "Skipped projects-workspace setup (non-interactive). Add repos later with 'dojo repos setup <owner>'."
+        return 0
+    fi
+    read -rp "Set up your projects workspace (~/projects/github/repos)? It clones your GitHub repos to work in. [y/N] " answer || answer="n"
+    case "${answer:-N}" in
+        [Yy])
+            command -v gh >/dev/null 2>&1 && owner="$(gh api user --jq .login 2>/dev/null)" || owner=""
+            if [[ -z "$owner" ]]; then
+                read -rp "GitHub owner (user or org) to clone repos from [your account]: " owner || owner=""
+            fi
+            log "Running '$dojo_script repos setup $owner' to clone your projects..."
+            "$dojo_script" repos setup ${owner:+"$owner"}
+            ;;
+        *)
+            log "Skipped (add repos later with 'dojo repos setup <owner>')."
+            ;;
+    esac
+}
+
+
+# ---------------------------------------------------------------------------
 # Complete Install Wipe
 # ---------------------------------------------------------------------------
 wipe_install() {
@@ -378,7 +414,11 @@ main() {
             ;;
     esac
 
-    # Step 3: Summary
+    # Offer to populate the projects workspace (clones the user's GitHub repos).
+    log "Step 3: Projects workspace"
+    prompt_repos_setup
+
+    # Step 4: Summary
     log ""
     log "=== Orca work environment installation complete ==="
     log ""
