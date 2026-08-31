@@ -35,12 +35,12 @@ bash <(curl -fsSL https://raw.githubusercontent.com/Cyb3rRon1n/dojo/main/install
 powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/Cyb3rRon1n/dojo/main/install.ps1 | iex"
 ```
 
-Installs whichever of the tools you don't already have, wires up
+Installs whichever of the tools you don't already have and wires up
 whatever optimizations each one supports (including Orca's headless agent
-skills), clones `~/projects/github/repos`,
-and prompts for GitHub auth (SSH key or `gh auth login`) if it's missing.
-No sudo/elevation required for any of it. Safe to re-run later — every step
-is a no-op if already done.
+skills). It then asks whether to set up your projects workspace — cloning
+your GitHub repos into `~/projects/github/repos` (see "Set up your
+projects"). No sudo/elevation required for any of it. Safe to re-run later —
+every step is a no-op if already done.
 
 **Windows notes** (native PowerShell, not WSL):
 - The `dojo` CLI itself (`dojo update`/`status`/`doctor`/`workspace`/`tokens`) is a bash
@@ -153,12 +153,45 @@ dojo status    # versions, GitHub auth, whether you're behind origin
 dojo doctor    # verify every wiring point (PATH, symlinks, hooks, plugins); exit 1 if broken
 dojo update    # git pull + re-run bootstrap.sh, from wherever you cloned it
 dojo install   # re-run install.sh (idempotent) — same one-shot as a fresh machine
+dojo repos setup <owner> [repo...]  # clone a GitHub owner's repos into ~/projects/github/repos
+dojo repos     # git pull + submodule update the workspace you already have
 dojo workspace # open dojo's frontend (Orca): verify it's wired, then list live worktrees
 dojo tokens    # live token usage / cache refresh / context-fill thresholds
 ```
 
 `dojo update` is the self-heal: any wiring that rotted (deleted symlink, lost
 plugin, missing hook) is re-created. `dojo doctor` tells you *when* to run it.
+
+### Set up your projects
+
+**1. Add your repos to the workspace.** Repos live under `~/projects/github/repos`
+(the default `REPOS_DIR`), one clone per project. Populate it with a GitHub
+owner's repos (your user, or an org):
+
+```bash
+dojo repos setup            # uses gh's logged-in user; clones all of their repos
+dojo repos setup <owner>    # clone every repo under <owner>
+dojo repos setup <owner> <repo> [repo...]  # just the ones you name
+```
+
+`dojo install` offers this same step interactively ("Set up your projects
+workspace?"). Already-present repos are left alone (a plain `git pull` keeps
+them current), and submodules are synced after cloning. `dojo repos` runs the
+pull + submodule update over whatever you have. Cloning is additive — run it
+again to pick up repos you've since created.
+
+**2. Work on a project.** Open Orca — dojo's work environment — with
+`dojo workspace` (it verifies the Orca CLI is wired, then lists live
+worktrees), or launch the Orca desktop app directly. Inside Orca, open a
+project from `~/projects/github/repos`; Orca checks out each agent into its
+own git **worktree** off that clone, so Claude Code, Codex, opencode, and
+friends each edit the project in parallel without stepping on each other.
+Work in those worktrees as you normally would — commits and pushes are real,
+landing on the branches Orca creates per agent. The `orca-cli` / `orchestration`
+/ `computer-use` agent skills bootstrap.sh installed are what let the agents
+drive Orca from inside the worktree. To add a *new* project later, either
+clone it with `dojo repos setup <owner> <repo>` or clone it directly into
+`~/projects/github/repos/` and open it in Orca.
 
 ### Token status
 

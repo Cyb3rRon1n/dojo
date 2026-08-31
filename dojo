@@ -137,6 +137,7 @@ usage: dojo <command>
   update   git pull + re-run bootstrap.sh (restore/refresh the whole stack)
   install  re-run install.sh (one-shot build-out, idempotent — same as fresh machine)
   repos    git pull + submodule update for the projects/github/repos workspace
+  repos setup [owner] [repo...]  clone repos into ~/projects/github/repos (default: all of <owner>'s; or gh's logged-in user)
   workspace  open dojo's frontend (Orca) — verify it's wired, then jump into its worktrees
   status   versions, GitHub auth, whether you're behind origin
   doctor   verify every wiring point is intact; exit 1 if anything is broken
@@ -411,8 +412,8 @@ PY
 }
 
 cmd_repos() {
-  if [[ ! -d "$REPOS_DIR/.git" ]]; then
-    echo "[dojo] no workspace at $REPOS_DIR yet — run 'dojo install' to set one up (it'll ask for your GitHub owner/repo)." >&2
+  if [[ ! -d "$REPOS_DIR/.git" ]] && [[ -z "$(ls -A "$REPOS_DIR" 2>/dev/null)" ]]; then
+    echo "[dojo] no workspace at $REPOS_DIR yet — run 'dojo repos setup' to clone your projects in." >&2
     return 1
   fi
   local ok=0
@@ -420,6 +421,65 @@ cmd_repos() {
   safe_submodule_update "$REPOS_DIR" || ok=1
   return "$ok"
 }
+
+# cmd_repos_setup [owner] [repo...] — clone a GitHub owner's repos (or an
+# explicit repo list) into $REPOS_DIR. This is the workspace-population step
+# the README/install always promised: it creates ~/projects/github/repos and
+# fills it. With no <repo> args it clones every repo under <owner> (defaulting
+# <owner> to gh's logged-in user). Already-present repos are left untouched
+# (git pull carries them forward), and each gets a submodule sync.
+cmd_repos_setup() {
+  local owner="${1:-}" repo
+  shift 1>/dev/null || true
+  [[ -d "$REPOS_DIR" ]] || { mkdir -p "$REPOS_DIR" && echo "[dojo] created $REPOS_DIR"; }
+
+  # Resolve the owner: explicit arg, else gh's logged-in user, else the
+  # interactive prompt (dojo is non-interactive by default; only prompt on a TTY).
+  if [[ -z "$owner" ]]; then
+    if command -v gh >/dev/null 2>&1 && owner="$(gh api user --jq .login 2>/dev/null)"; then
+      :
+    elif [[ -t 0 ]]; then
+      read -r -p "[dojo] GitHub owner (user or org) to clone repos from: " owner || owner=""
+    fi
+  fi
+  if [[ -z "$owner" ]]; then
+    warn "no GitHub owner given — pass one: 'dojo repos setup <owner>'"
+    return 1
+  fi
+
+  local repos=("$@")
+  if [[ ${#repos[@]} -eq 0 ]]; then
+    if ! command -v gh >/dev/null 2>&1; then
+      warn "gh not found — pass explicit repos: 'dojo repos setup <owner> <repo> [repo...]'"
+      return 1
+    fi
+    mapfile -t repos < <(gh repo list "$owner" --limit 1000 --json name --jq '.[].name' 2>/dev/null)
+  fi
+  if [[ ${#repos[@]} -eq 0 ]]; then
+    warn "no repos found for '$owner' — check the owner name or pass them explicitly"
+    return 1
+  fi
+
+  echo "[dojo] cloning $owner's repos into $REPOS_DIR:"
+  local ok=0
+  for repo in "${repos[@]}"; do
+    local dest="$REPOS_DIR/$repo"
+    if [[ -d "$dest/.git" ]]; then
+      echo "[dojo]   $repo — already present, updating"
+      safe_git_pull "$dest" "$owner/$repo" || ok=1
+      safe_submodule_update "$dest" || ok=1
+      continue
+    fi
+    if gh repo clone "$owner/$repo" "$dest" -- --quiet 2>/dev/null || git clone "git@github.com:$owner/$repo.git" "$dest" 2>/dev/null || git clone "https://github.com/$owner/$repo.git" "$dest" >/dev/null 2>&1; then
+      echo "[dojo]   $repo — cloned"
+    else
+      warn "   $repo — clone failed"
+      ok=1
+    fi
+  done
+  return "$ok"
+}
+
 
 # heal_env_owner — scan every local env dir (.serena, .omo) under the dojo repo
 # and each project in the repos workspace, prompt-and-sudo-chown any left
@@ -487,7 +547,12 @@ case "$cmd" in
     exec "$DOJO_DIR/install.sh"
     ;;
   repos)
-    cmd_repos
+    if [[ "${2:-}" == "setup" ]]; then
+      shift 2
+      cmd_repos_setup "$@"
+    else
+      cmd_repos
+    fi
     ;;
   workspace)
     cmd_workspace
