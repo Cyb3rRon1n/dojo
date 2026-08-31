@@ -526,7 +526,7 @@ cmd_workspace() {
     echo "[dojo] re-run 'dojo workspace'." >&2
     return 1
   fi
-  if ! printf '%s' "$out" | grep -qE '(\[|\{)\s*"?(id|worktrees|name)'; then
+  if ! printf '%s' "$out" | grep -zqE '^[\[{]\s*"?(id|worktrees|name)'; then
     echo "[dojo] Orca CLI responds but returned no worktrees." >&2
     echo "[dojo] Launch the Orca desktop app once (worktrees need a running Orca), then" >&2
     echo "[dojo] re-run 'dojo workspace'." >&2
