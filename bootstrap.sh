@@ -59,7 +59,7 @@ fi
 # banner, etc.) swallowed unless that step actually fails, in which case the
 # tail of its output prints so you can debug it.
 # ---------------------------------------------------------------------------
-TOTAL_STEPS=25
+TOTAL_STEPS=26
 STEP_N=0
 step() {
   STEP_N=$((STEP_N + 1))
@@ -298,7 +298,76 @@ link_file "$DOJO_DIR/claude/RTK.md" "$CLAUDE_HOME/RTK.md"
 # the same link_file mechanism CLAUDE.md/RTK.md already use above, rather
 # than forced through claude plugin marketplace add for no reason.
 link_file "$DOJO_DIR/claude/skills/task-observer" "$CLAUDE_HOME/skills/task-observer"
+# dojo-audit skill + researcher agent are plain dojo-authored bundles, same
+# deal - symlinked in, not marketplace-registered.
+link_file "$DOJO_DIR/claude/skills/dojo-audit" "$CLAUDE_HOME/skills/dojo-audit"
+link_file "$DOJO_DIR/claude/agents/researcher.md" "$CLAUDE_HOME/agents/researcher.md"
+# Global .contextignore - token-optimizer hard-blocks reads of matched paths
+# (generated/vendored files Claude has no reason to open).
+link_file "$DOJO_DIR/claude/contextignore" "$CLAUDE_HOME/.contextignore"
+# ponytail default mode -> 'lite' (still enforces the ladder, far less per-turn
+# prompt text). Read by the ponytail plugin on every host, not just Claude Code.
+link_file "$DOJO_DIR/claude/ponytail/config.json" "$CONFIG_HOME/ponytail/config.json"
 echo "ok"
+
+# ---------------------------------------------------------------------------
+# 2b. Claude Code settings.json patch
+#
+#   * respondToBashCommands: false - since CC v2.1.186 the model writes a
+#     reply after every !cmd / /command output; off by default here saves
+#     output tokens on every command.
+#   * permissions.deny - security-critical read blocks (secrets never enter
+#     context). Noise excludes live in .contextignore, not here.
+#
+#   Never clobbers a value the user set deliberately: only fills respondTo-
+#   BashCommands if absent, only appends deny rules that aren't already there.
+# ---------------------------------------------------------------------------
+if command -v claude >/dev/null 2>&1; then
+  step "Claude Code settings patch"
+  if python3 - "$CLAUDE_HOME/settings.json" <<'PY'
+import json, os, sys
+path = sys.argv[1]
+d = {}
+if os.path.isfile(path):
+    try:
+        d = json.load(open(path))
+    except ValueError:
+        print("skip (settings.json unreadable)")
+        sys.exit(0)
+
+changed = False
+if "respondToBashCommands" not in d:
+    d["respondToBashCommands"] = False
+    changed = True
+
+want_deny = [
+    "Read(./.env)",
+    "Read(./.env.*)",
+    "Read(./**/.env)",
+    "Read(./**/.env.*)",
+    "Read(./secrets/**)",
+    "Read(./**/*.pem)",
+    "Read(./**/id_rsa)",
+]
+perms = d.setdefault("permissions", {})
+deny = perms.setdefault("deny", [])
+for rule in want_deny:
+    if rule not in deny:
+        deny.append(rule)
+        changed = True
+
+if changed:
+    json.dump(d, open(path, "w"), indent=2)
+    print("ok")
+else:
+    print("skip (already patched)")
+PY
+  then
+    :
+  fi
+else
+  skip_step "Claude Code settings patch" "claude missing"
+fi
 
 # ---------------------------------------------------------------------------
 # 3. Claude Code plugins (marketplace + install are idempotent)

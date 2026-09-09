@@ -13,3 +13,11 @@ To pick up an upstream update: re-clone the repo, diff `SKILL.md`,
 `USER-GUIDE.md`, `LICENSE.txt`, and `references/*.md` against this directory,
 and bump the commit hash above. `README.md` and the two PNG banners are
 deliberately not vendored — decorative, not loaded by the skill itself.
+
+## Local modifications
+
+- **`SKILL.md` frontmatter `description`** — trimmed to ~8 lines (from ~13).
+  Full upstream text is belt-and-suspenders for activation; dojo's
+  `claude/CLAUDE.md` already carries the hard activation instruction, so the
+  long description just costs tokens every session. Re-apply this trim after
+  any upstream `SKILL.md` merge. Skill body is unmodified.

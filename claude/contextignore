@@ -1,0 +1,40 @@
+# dojo — global .contextignore, symlinked to ~/.claude/.contextignore
+#
+# token-optimizer honours this file (gitignore-style globs). It hard-blocks
+# reads of matched paths regardless of read-cache mode, so Claude never burns
+# context re-reading generated or vendored files it has no reason to open.
+#
+# This is the GLOBAL list — keep it to things that are noise in *every* repo.
+# Per-project excludes belong in that repo's own .contextignore.
+
+# Dependency trees
+**/node_modules/**
+**/.venv/**
+**/venv/**
+**/vendor/**
+
+# Build output
+**/dist/**
+**/build/**
+**/.next/**
+**/target/**
+**/__pycache__/**
+
+# Lockfiles (huge, near-zero signal)
+**/package-lock.json
+**/pnpm-lock.yaml
+**/yarn.lock
+**/uv.lock
+**/Cargo.lock
+**/poetry.lock
+
+# Tool caches / generated graphs
+**/graphify-out/**
+**/.serena/cache/**
+**/.omo/**
+**/.git/**
+
+# Minified / map artifacts
+**/*.min.js
+**/*.min.css
+**/*.map

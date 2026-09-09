@@ -338,10 +338,33 @@ PY
       bad "$f not linked to dojo — run 'dojo update'"
     fi
   done
-  if [[ "$(readlink -f "$HOME/.claude/skills/task-observer" 2>/dev/null)" == "$DOJO_DIR/claude/skills/task-observer" ]]; then
-    ok "task-observer skill linked to dojo"
+  local link
+  for link in \
+    "skills/task-observer:claude/skills/task-observer:task-observer skill" \
+    "skills/dojo-audit:claude/skills/dojo-audit:dojo-audit skill" \
+    "agents/researcher.md:claude/agents/researcher.md:researcher agent" \
+    ".contextignore:claude/contextignore:.contextignore"; do
+    IFS=: read -r dst src label <<< "$link"
+    if [[ "$(readlink -f "$HOME/.claude/$dst" 2>/dev/null)" == "$DOJO_DIR/$src" ]]; then
+      ok "$label linked to dojo"
+    else
+      bad "$label not linked to dojo — run 'dojo update'"
+    fi
+  done
+  if [[ "$(readlink -f "$HOME/.config/ponytail/config.json" 2>/dev/null)" == "$DOJO_DIR/claude/ponytail/config.json" ]]; then
+    ok "ponytail config linked to dojo"
   else
-    bad "task-observer skill not linked to dojo — run 'dojo update'"
+    bad "ponytail config not linked to dojo — run 'dojo update'"
+  fi
+  if find_tool claude >/dev/null 2>&1; then
+    local rtb
+    rtb="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get('respondToBashCommands'))" \
+      "$HOME/.claude/settings.json" 2>/dev/null || echo unreadable)"
+    if [[ "$rtb" == "False" ]]; then
+      ok "respondToBashCommands disabled"
+    else
+      bad "respondToBashCommands not disabled ($rtb) — run 'dojo update'"
+    fi
   fi
 
   if command -v copilot >/dev/null 2>&1; then

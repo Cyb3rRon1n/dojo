@@ -93,6 +93,24 @@ JSON
   echo "$output" | grep -q 'CLAUDE.md linked to dojo'
   echo "$output" | grep -q 'RTK.md linked to dojo'
   echo "$output" | grep -q 'task-observer skill linked to dojo'
+  echo "$output" | grep -q 'dojo-audit skill linked to dojo'
+  echo "$output" | grep -q 'researcher agent linked to dojo'
+  echo "$output" | grep -q '.contextignore linked to dojo'
+  echo "$output" | grep -q 'ponytail config linked to dojo'
+}
+
+@test "bootstrap.sh: settings.json patch disables respondToBashCommands, keeps user values" {
+  export CLAUDE_CONFIG_DIR="$TMP_HOME/.claude"
+  mkdir -p "$CLAUDE_CONFIG_DIR"
+  cat > "$CLAUDE_CONFIG_DIR/settings.json" <<'JSON'
+{ "theme": "dark", "permissions": { "deny": ["Read(./private/**)"] } }
+JSON
+  mkdir -p "$TMP_HOME/.local/bin"
+  printf '#!/bin/sh\necho "claude 9.9.9"\n' > "$TMP_HOME/.local/bin/claude"
+  chmod +x "$TMP_HOME/.local/bin/claude"
+  PATH="$TMP_HOME/.local/bin:$PATH" "$DOJO_DIR/bootstrap.sh" </dev/null >/dev/null 2>&1 || true
+  run python3 -c "import json;d=json.load(open('$CLAUDE_CONFIG_DIR/settings.json'));print(d['respondToBashCommands'],d['theme'],'Read(./private/**)' in d['permissions']['deny'],'Read(./.env)' in d['permissions']['deny'])"
+  [ "$output" = "False dark True True" ]
 }
 
 @test "doctor: tool under ~/.local/bin found without being on PATH" {
