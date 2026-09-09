@@ -7,6 +7,7 @@ set -euo pipefail
 
 DOJO_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 REPOS_DIR="${REPOS_DIR:-$HOME/projects/github/repos}"
+CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"   # match bootstrap.sh
 
 warn() { printf '[dojo][warn] %s\n' "$*" >&2; }
 
@@ -351,7 +352,7 @@ PY
       bad "$label not linked to dojo — run 'dojo update'"
     fi
   done
-  if [[ "$(readlink -f "$HOME/.config/ponytail/config.json" 2>/dev/null)" == "$DOJO_DIR/claude/ponytail/config.json" ]]; then
+  if [[ "$(readlink -f "$CONFIG_HOME/ponytail/config.json" 2>/dev/null)" == "$(readlink -f "$DOJO_DIR/claude/ponytail/config.json" 2>/dev/null)" ]]; then
     ok "ponytail config linked to dojo"
   else
     bad "ponytail config not linked to dojo — run 'dojo update'"

@@ -5,6 +5,9 @@ setup() {
   rm -rf "$TMP_HOME"
   mkdir -p "$TMP_HOME"
   export HOME="$TMP_HOME"
+  # Hermetic XDG — a runner-set XDG_CONFIG_HOME would otherwise send
+  # bootstrap's symlinks outside TMP_HOME while doctor looks inside it.
+  export XDG_CONFIG_HOME="$TMP_HOME/.config"
   export DOJO_DIR="$BATS_TEST_DIRNAME/.."
   export TOKEN_OPTIMIZER_DATA_DIR="$BATS_TMPDIR/dojo-tokens-empty"
   rm -rf "$TOKEN_OPTIMIZER_DATA_DIR"
