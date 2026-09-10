@@ -1,17 +1,17 @@
 @RTK.md
-# graphify
-- **graphify** (`~/.claude/skills/graphify/SKILL.md`) - any input to knowledge graph. Trigger: `/graphify`
-When the user types `/graphify`, use the installed graphify skill or instructions before doing anything else.
 
-# task-observer
-- **task-observer** (`~/.claude/skills/task-observer/SKILL.md`, a.k.a. "One Skill to Rule Them All") - watches substantive multi-step work sessions (tool use producing real deliverables, not one-off questions) for corrections, workflow patterns, and gaps worth turning into new/improved skills, and logs structured observations for later review. Invoke it at the start of that kind of session, per its own description - description-only matching isn't reliable enough on its own (see the skill's own "Recommended Activation Setup"). Also trigger on "any observations logged?" or explicit mentions of skill observations/improvements/the observation log.
+# Skills & agents dojo adds
+- **graphify** (`~/.claude/skills/graphify/SKILL.md`) — any input → knowledge graph. On `/graphify`, use it before anything else.
+- **task-observer** (`~/.claude/skills/task-observer/SKILL.md`, "One Skill to Rule Them All") — watch substantive multi-step work sessions for corrections, workflow patterns, and skill gaps; log structured observations. Invoke at the start of that kind of session (description-only matching isn't reliable). Also trigger on "any observations logged?".
+- **dojo-audit** (`~/.claude/skills/dojo-audit/SKILL.md`) — token/perf diagnostics of this stack + ranked improvement options. Trigger: `/dojo-audit`.
+- **researcher** agent — dispatch heavy web research here (Sonnet, read-only); it synthesises and keeps raw pages out of this context.
 
-# Cross-machine setup
-- This stack is versioned in `~/dojo` (github.com/Cyb3rRon1n/dojo, public).
-- After any `git -C ~/dojo pull`, re-run `~/dojo/bootstrap.sh` (idempotent) to pick up plugin pins, the RTK hook, and graphify. Restart opencode + Claude Code after.
-- On a brand-new machine: one-liner — `bash <(curl -fsSL https://raw.githubusercontent.com/Cyb3rRon1n/dojo/main/install.sh)` — installs opencode + Claude Code + uv, runs the full bootstrap, and clones `~/projects/github/repos` (submodules included). Only manual step: GitHub auth (SSH key or `gh auth login`) — install.sh warns if it's missing. Restart both after.
-- If plugins seem lost: `~/dojo/bootstrap.sh` prints a verification (plugin counts, rtk/graphify versions); check that `~/.config/opencode/opencode.jsonc` and `~/.claude/CLAUDE.md` are symlinks into `~/dojo/`.
+# Ponytail
+- Starts every session at **lite** (`~/.config/ponytail/config.json`). Bump per-session with `/ponytail full` for over-engineering-prone work.
 
 # Session hygiene
-- Default to concise output on routine/mechanical tasks (file edits, status checks, git ops); skip explanations unless asked.
-- Heavy web research (many searches/fetches) belongs in a forked subagent — the raw page content stays in its context, not this one. Synthesize and report back.
+- Concise output on routine/mechanical tasks (file edits, status checks, git ops); skip explanations unless asked.
+- Heavy web research (many searches/fetches) → the `researcher` subagent, or a fork. Synthesize and report back; don't pull raw pages into this context.
+
+# Cross-machine setup
+- This stack lives in `~/dojo` (github.com/Cyb3rRon1n/dojo). After `git -C ~/dojo pull`, re-run `~/dojo/bootstrap.sh` (idempotent) and restart opencode + Claude Code. New machine, full setup, and troubleshooting: dojo README.
