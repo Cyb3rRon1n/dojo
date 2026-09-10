@@ -1,0 +1,9 @@
+.git/
+*.bak
+node_modules/
+.omo/
+.serena/
+.codegraph
+assets/
+bootstrap.ps1
+install.ps1
