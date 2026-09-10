@@ -187,12 +187,10 @@ if ($env:DOJO_TOOLS) {
 }
 function Want($tool) { $SelectedTools -contains $tool }
 
-}
-
 # ---------------------------------------------------------------------------
 # Phase 2: Orca — desktop work environment
 # ---------------------------------------------------------------------------
-if want orca && $env:DESKTOP_AVAILABLE {
+if ((Want "orca") -and $env:DESKTOP_AVAILABLE) {
   # Windows .exe install + CLI registration guidance
   try {
     $latest = Invoke-RestMethod -Method Get -Uri "https://api.github.com/repos/stablyai/orca/releases/latest" -ErrorAction Stop
@@ -208,7 +206,7 @@ if want orca && $env:DESKTOP_AVAILABLE {
   } catch {
     warn "orca: could not download .exe (admin/network restrictions) — download from https://onorca.dev/download and register the CLI in Settings → General → Orca CLI"
   }
-} elseif want orca && -not $env:DESKTOP_AVAILABLE {
+} elseif ((Want "orca") -and (-not $env:DESKTOP_AVAILABLE)) {
   # Headless: Orca GUI skipped; server instructions already emitted in Phase 1
   log "Orca GUI skipped (no desktop). Run 'orca serve' for web UI access via LAN/VPN. The Orca CLI skills will still be wired by bootstrap."
 # Port resolution: if 3000 is already in use, default to 3001
