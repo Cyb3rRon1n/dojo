@@ -129,6 +129,27 @@ methodology library and a meta-skill for growing your own skill set:
 | [code-review](https://claude.com/plugins/code-review) + [pr-review-toolkit](https://claude.com/plugins/pr-review-toolkit) | Anthropic's official review agents: five parallel reviewers with confidence-scored filtering, plus PR summarization and line-level review |
 | [task-observer](https://github.com/rebelytics/one-skill-to-rule-them-all) | Watches sessions for corrections/gaps and logs skill-improvement candidates for review — vendored under `claude/skills/task-observer/` (see that dir's `UPSTREAM.md`), since upstream ships as a plain skill bundle with no plugin-marketplace manifest |
 
+dojo also ships two of its own, symlinked into `~/.claude/` by bootstrap:
+
+| Bundle | What it does |
+|---|---|
+| `dojo-audit` skill (`/dojo-audit`) | Token/perf diagnostics of this whole stack — runs the token-optimizer, RTK and graphify readouts, summarises context overhead / cost-per-session / quality trends, and hands back a ranked list of fixes. Diagnosis only; changes land as a dojo PR |
+| `researcher` agent | Sonnet, read-only (web + docs). Target for the "heavy web research → subagent" rule in `claude/CLAUDE.md`: it synthesises and keeps raw pages out of the parent context, instead of research fanning out on Opus |
+
+### settings.json + ponytail
+
+bootstrap patches `~/.claude/settings.json` (never clobbering values you set):
+
+- **`respondToBashCommands: false`** — since CC v2.1.186 the model writes a reply
+  after every `!cmd` / `/command`; off here saves output tokens on every command.
+- **`permissions.deny`** — security-critical read blocks only (`.env`, `secrets/**`,
+  `*.pem`, `id_rsa`). Noise/generated-file excludes live in `~/.claude/.contextignore`
+  (`claude/contextignore`, honoured by token-optimizer), not here.
+
+`claude/ponytail/config.json` → `~/.config/ponytail/config.json` sets ponytail's
+default mode to **lite** — still enforces the ladder, far less per-turn prompt
+text. `/ponytail full` per-session for over-engineering-prone work.
+
 ### Shared MCP servers
 
 Wired into both Claude Code (`claude mcp add --scope user`) and opencode
