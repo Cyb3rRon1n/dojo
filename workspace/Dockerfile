@@ -63,6 +63,15 @@ COPY . /opt/dojo
 # overwrites a real edit made from inside the workspace.
 COPY workspace/vscode-settings.json /opt/dojo-defaults/vscode-settings.json
 
+# bootstrap.sh symlinks e.g. ~/.claude/RTK.md -> /opt/dojo/claude/RTK.md, and
+# `rtk init --auto-patch` writes through that symlink to regenerate it - found
+# live: root-owned /opt/dojo made that a permission-denied crash, which
+# silently skipped registering the RTK PreToolUse hook every single boot
+# (dojo doctor: "RTK hook missing from settings.json"). A normal `dojo`
+# install never hits this since the clone dir is owned by whoever ran it;
+# only this image's outside-the-volume /opt/dojo is root-owned by default.
+RUN chown -R coder /opt/dojo
+
 # code-server's entrypoint runs every executable in ENTRYPOINTD at start
 # (after fixuid, before code-server) — that is where we (re)wire the stack
 # into whatever the /home/coder volume currently holds. Also kept outside
