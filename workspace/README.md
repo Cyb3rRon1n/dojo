@@ -86,6 +86,21 @@ injection through a repo or dependency can run code with your permissions.
 Egress allowlisting, dropped capabilities, and a read-only root FS are sensible
 next steps if this box does anything else.
 
+## Homepage dashboard tile
+
+If you run a co-located Vulcan install with Homepage enabled, add a click-through
+tile for this workspace instead of remembering the URL:
+
+```bash
+pip install --user pyyaml   # if not already present
+python3 workspace/homepage_integrate.py --url http://192.168.1.x:8443
+```
+
+Auto-detects a sibling `vulcan/stack` (the same layout this workspace repo
+itself uses); pass `--vulcan-dir` for any other layout. Safe to re-run — it
+only ever touches its own "Workspace (dojo)" group, same write-once respect
+for the rest of `services.yaml` as Anvil's Vulcan integration.
+
 ## Persistence
 
 One named volume holds all of `/home/coder`: your projects, every agent's auth and
