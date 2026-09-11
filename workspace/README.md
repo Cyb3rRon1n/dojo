@@ -38,9 +38,10 @@ docker compose up -d --build
 First build is slow (full toolchain). First start runs `bootstrap.sh` against the
 empty volume — a minute or two — then subsequent starts are fast.
 
-By default no port is published: attach the `workspace` service to your
-reverse-proxy network. For a first run or LAN-only use, uncomment the `ports:`
-block in `docker-compose.yml` (`8443:8080`).
+By default no port is published — reach it over Tailscale/WireGuard (see
+Security below) or by uncommenting the `ports:` block in `docker-compose.yml`
+for LAN-only use. Already run Vulcan's Traefik + Authelia? Use the proxy
+overlay instead (see Security).
 
 ### Environment
 
@@ -57,7 +58,28 @@ a GitHub token, and a container is not a hard isolation boundary — indirect pr
 injection through a repo or dependency can run code with your permissions.
 
 - Put it behind a VPN (Tailscale/WireGuard) or an authenticating proxy
-  (Authelia/Authentik/oauth2-proxy), plus HTTPS.
+  (Authelia/Authentik/oauth2-proxy), plus HTTPS. Two ways to do that here:
+
+  **Tailscale/WireGuard only (default, simplest)** — leave the port
+  unpublished, or publish it and rely on the VPN alone to reach it. No proxy
+  config needed; `code-server`'s own `WORKSPACE_PASSWORD` is the only login.
+
+  **Already run Vulcan's Traefik + Authelia?** Use the overlay instead of a
+  second VPN hop:
+
+  ```bash
+  # .env additions:
+  #   TRAEFIK_NETWORK=<vulcan's compose project name>_default   # docker network ls | grep -i default
+  #   WORKSPACE_DOMAIN=workspace.yourdomain.tld
+  docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d --build
+  ```
+
+  Vulcan's Authelia runs `default_policy: one_factor`, so routing through
+  Traefik with the `authelia@docker` middleware already requires a login —
+  no Authelia config change needed. **Recommended**: add
+  `workspace.<domain>` to Vulcan's own `admin_only_services` so this
+  service — the one holding your agent API keys and a GitHub token — needs
+  the admin group, not just any authenticated user.
 - Use a fine-grained GitHub token scoped to just the repos you work on.
 - Treat the API keys as rotatable; don't reuse your primary ones if you can help it.
 
