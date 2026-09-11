@@ -20,6 +20,12 @@ if [ -S /var/run/docker.sock ]; then
 fi
 mkdir -p "$HOME/projects"
 
+VSCODE_SETTINGS="$HOME/.local/share/code-server/User/settings.json"
+if [ ! -f "$VSCODE_SETTINGS" ] && [ -f /opt/dojo-defaults/vscode-settings.json ]; then
+    mkdir -p "$(dirname "$VSCODE_SETTINGS")"
+    cp /opt/dojo-defaults/vscode-settings.json "$VSCODE_SETTINGS"
+fi
+
 # A real GITHUB_TOKEN in the environment means `gh auth status` passes and
 # bootstrap never touches auth. Without one, bootstrap would call the
 # interactive `gh auth login` device flow, which polls forever with no TTY
