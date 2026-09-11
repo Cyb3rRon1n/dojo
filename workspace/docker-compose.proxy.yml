@@ -1,0 +1,41 @@
+# Optional overlay: put the workspace behind an existing Vulcan Traefik +
+# Authelia install instead of Tailscale/LAN-only access. Vulcan's Authelia
+# runs with default_policy: one_factor, so once Traefik routes here with the
+# authelia@docker middleware, a login is already required — no Authelia
+# config change needed. Recommended extra step below.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d --build
+#
+# Requires, in .env:
+#   TRAEFIK_NETWORK=<vulcan's compose project name>_default   # e.g. stack_default
+#   WORKSPACE_DOMAIN=workspace.yourdomain.tld
+#   TRAEFIK_CERTRESOLVER=cloudflare   # only if Vulcan's Traefik uses Cloudflare DNS-01; omit otherwise
+#
+# Find Vulcan's real network name with: docker network ls | grep -i default
+# (it's <the directory Vulcan's docker-compose.yml lives in>_default, not
+# necessarily literally "vulcan").
+#
+# Recommended: add `workspace.${WORKSPACE_DOMAIN}` to Vulcan's own
+# `admin_only_services` so this — the one service that holds your agent API
+# keys and a GitHub token — needs the admin group, not just one_factor.
+
+services:
+  workspace:
+    networks:
+      - default
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.workspace.rule=Host(`${WORKSPACE_DOMAIN}`)"
+      - "traefik.http.routers.workspace.entrypoints=websecure"
+      - "traefik.http.routers.workspace.tls=true"
+      - "traefik.http.routers.workspace.tls.certresolver=${TRAEFIK_CERTRESOLVER:-}"
+      - "traefik.http.routers.workspace.middlewares=authelia@docker"
+      - "traefik.http.services.workspace.loadbalancer.server.port=8080"
+
+networks:
+  default: {}
+  proxy:
+    external: true
+    name: ${TRAEFIK_NETWORK:?set TRAEFIK_NETWORK in .env to Vulcan's compose network}
