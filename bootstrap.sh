@@ -161,12 +161,16 @@ if command -v rtk >/dev/null 2>&1; then
 fi
 
 if command -v gh >/dev/null 2>&1; then
-  # Check if already authenticated
+  # Already authenticated? (true too when GH_TOKEN / GITHUB_TOKEN is exported)
   if gh auth status >/dev/null 2>&1; then
     skip_step "gh authentication" "already logged in"
-  else
+  elif [ -t 0 ]; then
     run_step "gh authentication" bash -c 'gh auth login --hostname github.com' \
       || warn "gh auth login failed - GitHub MCP may not work"
+  else
+    # No TTY (container entrypoint, CI, piped install): `gh auth login` would
+    # start an interactive device flow that polls forever and wedges the run.
+    skip_step "gh authentication" "non-interactive - run 'gh auth login' yourself or export GITHUB_TOKEN"
   fi
 else
   skip_step "gh binary" "install: brew install gh (macOS) or sudo apt-get install gh (Ubuntu)"
