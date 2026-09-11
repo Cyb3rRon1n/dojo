@@ -5,6 +5,19 @@
 set -u
 
 export PATH="/usr/local/bin:$HOME/.local/bin:$PATH"
+
+# docker-compose.manage.yml mounts the host's /var/run/docker.sock, whose
+# group GID varies per host and almost never matches any group already in
+# this image. Must happen before code-server starts below (group membership
+# is fixed at process start, not re-read per-command) - a terminal opened
+# inside code-server inherits whatever groups coder has *right now*.
+if [ -S /var/run/docker.sock ]; then
+    SOCK_GID="$(stat -c %g /var/run/docker.sock)"
+    if ! getent group "$SOCK_GID" >/dev/null; then
+        sudo groupadd -g "$SOCK_GID" dockerhost
+    fi
+    sudo usermod -aG "$SOCK_GID" coder
+fi
 mkdir -p "$HOME/projects"
 
 # A real GITHUB_TOKEN in the environment means `gh auth status` passes and

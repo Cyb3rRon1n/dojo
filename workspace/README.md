@@ -72,6 +72,7 @@ injection through a repo or dependency can run code with your permissions.
   # .env additions:
   #   TRAEFIK_NETWORK=<vulcan's compose project name>_default   # docker network ls | grep -i default
   #   WORKSPACE_DOMAIN=workspace.yourdomain.tld
+  #   TRAEFIK_ENTRYPOINTS=websecure,tunnel   # only if Vulcan's Traefik has cloudflared enabled — see below
   docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d --build
   ```
 
@@ -81,11 +82,40 @@ injection through a repo or dependency can run code with your permissions.
   `workspace.<domain>` to Vulcan's own `admin_only_services` so this
   service — the one holding your agent API keys and a GitHub token — needs
   the admin group, not just any authenticated user.
+
+  **Behind a Cloudflare Tunnel** (found live, not hypothetical — see the
+  overlay file's own comments for the full story): every other tunneled
+  router in Vulcan's compose carries `entrypoints=websecure,tunnel`, and
+  Traefik's docker provider needs `traefik.docker.network` pinned the
+  moment this service sits on more than one network (it does, by design —
+  `default` + `proxy`) or it can pick the network it has no route to and
+  hang until Cloudflare's edge times out (504/524). Both are already
+  handled by the overlay — `TRAEFIK_ENTRYPOINTS` above is the only thing
+  you set; `traefik.docker.network` just uses `TRAEFIK_NETWORK` you already set.
 - Use a fine-grained GitHub token scoped to just the repos you work on.
 - Treat the API keys as rotatable; don't reuse your primary ones if you can help it.
 
 Egress allowlisting, dropped capabilities, and a read-only root FS are sensible
 next steps if this box does anything else.
+
+## Managing the host you run on (optional)
+
+`docker-compose.manage.yml` gives the workspace `docker`/`docker compose`
+(client-only, no daemon in this image) against **this host's** real Docker
+socket, plus your real repo checkouts mounted at `/home/coder/host` — for
+using the agents inside to fix or update whatever else runs here (a
+co-located Vulcan install included), the exact loop this project's own dojo
+repo was debugged through.
+
+```bash
+# .env addition:
+#   HOST_PROJECTS_DIR=/home/youruser   # wherever your real checkouts live
+docker compose -f docker-compose.yml [-f docker-compose.proxy.yml] -f docker-compose.manage.yml up -d --build
+```
+
+Mounting `/var/run/docker.sock` is root-equivalent access to the whole host,
+not just "containers" — the same caveat as everywhere else this stack
+touches a socket. This overlay is opt-in for exactly that reason.
 
 ## orca-serve — an always-on Orca agent server (optional)
 
