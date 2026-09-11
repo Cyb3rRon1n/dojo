@@ -1,5 +1,6 @@
 *.bak
 node_modules/
+__pycache__/
 .env
 .env.*
 !.env.example

@@ -5,9 +5,10 @@ with the terminal coding agents and dojo's optimizer stack already installed and
 wired. Spin it up on a homelab box, put it behind your reverse proxy, and open a
 full agent-ready workspace from any browser.
 
-This is the browser-native alternative to running Orca on the desktop. Orca's own
-`orca serve` remote mode is the higher-fidelity option (parallel worktrees, mobile
-client) — see the dojo README — but this needs no desktop app anywhere.
+This is the browser-native path — no desktop app anywhere. An optional second
+service, `orca-serve`, also lives in this directory for Orca's own remote mode
+(parallel worktrees, mobile client) — see below for why that one still needs
+the Orca desktop/mobile app as its client, not a browser.
 
 ## What's in the image
 
@@ -85,6 +86,36 @@ injection through a repo or dependency can run code with your permissions.
 
 Egress allowlisting, dropped capabilities, and a read-only root FS are sensible
 next steps if this box does anything else.
+
+## orca-serve — an always-on Orca agent server (optional)
+
+`orca/` builds a second, separate service: Orca itself (github.com/stablyai/orca),
+headless, so its agents keep running while your laptop sleeps. Enable it with:
+
+```bash
+docker compose --profile orca up -d --build orca-serve
+```
+
+**This is not a browser workspace.** Orca's own browser client can't yet run
+terminals or agents against a headless server (open upstream issue,
+stablyai/orca#9047) — you pair to this with the **Orca desktop or mobile app**
+(Settings → Remote Orca Servers → Add Server, or scan the QR code), not a URL
+you click from the dashboard. Reach it over Tailscale only — Orca has no
+account system; its `serve` output prints a one-time pairing URL, which is
+itself the credential, so keep it out of logs you'd share. Set
+`ORCA_PAIRING_ADDRESS` in `.env` to the host's Tailscale IP so the printed
+pairing link advertises an address your desktop app can actually reach:
+
+```bash
+docker compose --profile orca logs orca-serve | grep "Pairing URL"
+```
+
+Verified live: the image builds, `docker run` reaches "Orca server ready"
+and a real pairing URL, and the port answers `200`. One thing learned the
+hard way — wrapping the launch in `xvfb-run` left it never starting (its own
+readiness check never unblocked in this image); Orca launches its own
+internal Xvfb correctly as long as `DISPLAY` is left unset, which is what
+`entrypoint.sh` now does.
 
 ## Homepage dashboard tile
 
