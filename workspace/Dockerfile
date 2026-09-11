@@ -24,6 +24,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
+# docker CLI + compose plugin (client only — talks to the host's socket via
+# docker-compose.manage.yml, no daemon in this image). Static builds, not the
+# apt package, so the version is pinned and the image doesn't pull in a full
+# dockerd it will never run.
+RUN curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-29.8.0.tgz \
+      | tar xz -C /tmp \
+    && mv /tmp/docker/docker /usr/local/bin/docker \
+    && rm -rf /tmp/docker \
+    && mkdir -p /usr/local/lib/docker/cli-plugins \
+    && curl -fsSL -o /usr/local/lib/docker/cli-plugins/docker-compose \
+         https://github.com/docker/compose/releases/download/v5.5.1/docker-compose-linux-x86_64 \
+    && chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
 # Terminal coding agents (npm) — opencode ships as opencode-ai.
 RUN npm install -g \
         @anthropic-ai/claude-code \
