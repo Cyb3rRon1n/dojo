@@ -1,0 +1,15 @@
+.git/
+*.bak
+node_modules/
+.omo/
+.serena/
+.codegraph
+assets/
+bootstrap.ps1
+install.ps1
+
+# Never bake secrets into an image layer — workspace/Dockerfile does `COPY .`
+.env
+.env.*
+**/.env
+**/.env.*

@@ -1,0 +1,62 @@
+name: dojo-workspace
+
+# A browser IDE with the coding-agent CLIs + dojo's optimizer stack baked in.
+#   1. create .env alongside this file:
+#        WORKSPACE_PASSWORD=your-password      (required)
+#        ANTHROPIC_API_KEY=...   OPENAI_API_KEY=...   GITHUB_TOKEN=...   (optional)
+#   2. docker compose up -d --build
+#   3. open the reverse-proxied URL (or uncomment `ports` for LAN/testing)
+#
+# SECURITY: do not publish this straight to the internet. Put it behind a VPN
+# (Tailscale/WireGuard) or an authenticating proxy (Authelia/Authentik). The
+# agents hold your API keys and a GitHub token; a container is not a hard
+# isolation boundary.
+
+services:
+  workspace:
+    build:
+      context: ..
+      dockerfile: workspace/Dockerfile
+    image: dojo-workspace
+    restart: unless-stopped
+    environment:
+      PASSWORD: ${WORKSPACE_PASSWORD:?set WORKSPACE_PASSWORD in .env}
+      # Passed through to the agents. Leave blank to log in interactively
+      # inside the terminal instead.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+    volumes:
+      # Everything the workspace should keep. Tools live in system paths in
+      # the image, so this volume never shadows them.
+      - home:/home/coder
+    # No published port by default — attach this to your reverse-proxy network:
+    #   networks: [proxy]
+    # For a first run or LAN-only use instead:
+    # ports:
+    #   - "8443:8080"
+
+  # An always-on Orca agent server, paired to from the Orca DESKTOP/MOBILE
+  # app over Tailscale — NOT a browser workspace (orca/Dockerfile explains
+  # why). Optional and separate from the tile above. Enable with:
+  #   docker compose --profile orca up -d --build orca-serve
+  orca-serve:
+    build:
+      context: ..
+      dockerfile: workspace/orca/Dockerfile
+    image: dojo-orca-serve
+    profiles: ["orca"]
+    restart: unless-stopped
+    environment:
+      # Your Tailscale IP for this host — the address advertised to clients.
+      ORCA_PAIRING_ADDRESS: ${ORCA_PAIRING_ADDRESS:-}
+    volumes:
+      - orca-home:/home/orca
+    # No published port by default — Tailscale only, per the security
+    # section in README. For LAN-only use instead:
+    # ports:
+    #   - "6768:6768"
+
+volumes:
+  home:
+  orca-home:
