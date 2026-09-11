@@ -11,6 +11,14 @@
 #   TRAEFIK_NETWORK=<vulcan's compose project name>_default   # e.g. stack_default
 #   WORKSPACE_DOMAIN=workspace.yourdomain.tld
 #   TRAEFIK_CERTRESOLVER=cloudflare   # only if Vulcan's Traefik uses Cloudflare DNS-01; omit otherwise
+#   TRAEFIK_ENTRYPOINTS=websecure,tunnel   # only if Vulcan's Traefik has cloudflared enabled — every
+#                                          # other router there carries ",tunnel" (its own tunnel-only
+#                                          # entrypoint, vulcan's --entrypoints.tunnel.address=:8081) and
+#                                          # without it Cloudflare reaches Traefik but Traefik has no
+#                                          # router listening on that entrypoint for this Host, so it
+#                                          # answers its own 404 — found live, not a hypothetical: grep
+#                                          # `entrypoints=websecure,tunnel` in Vulcan's docker-compose.yml
+#                                          # to confirm whether your install needs this. Omit otherwise.
 #
 # Find Vulcan's real network name with: docker network ls | grep -i default
 # (it's <the directory Vulcan's docker-compose.yml lives in>_default, not
@@ -28,7 +36,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.workspace.rule=Host(`${WORKSPACE_DOMAIN}`)"
-      - "traefik.http.routers.workspace.entrypoints=websecure"
+      - "traefik.http.routers.workspace.entrypoints=${TRAEFIK_ENTRYPOINTS:-websecure}"
       - "traefik.http.routers.workspace.tls=true"
       - "traefik.http.routers.workspace.tls.certresolver=${TRAEFIK_CERTRESOLVER:-}"
       - "traefik.http.routers.workspace.middlewares=authelia@docker"
