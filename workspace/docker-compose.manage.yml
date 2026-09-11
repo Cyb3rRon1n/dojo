@@ -1,0 +1,23 @@
+# Optional overlay: give the workspace direct access to THIS host's Docker
+# daemon and repo checkouts, for using the agents inside it to inspect, fix,
+# and update whatever else runs here (a co-located Vulcan install, other
+# stacks, this same dojo repo) — not a sandboxed "someone else's box," on
+# purpose, because that's the actual use case: self-managing the host it
+# runs on.
+#
+# Usage:
+#   docker compose -f docker-compose.yml [-f docker-compose.proxy.yml] -f docker-compose.manage.yml up -d --build
+#
+# Requires, in .env:
+#   HOST_PROJECTS_DIR=/home/youruser   # your real checkouts — mounted at /home/coder/host
+#
+# SECURITY: mounting /var/run/docker.sock is root-equivalent access to this
+# whole host, not just "containers" — same as everywhere else this project
+# says it. This overlay exists because you asked for exactly that
+# capability; it is not the default, and it is not free.
+
+services:
+  workspace:
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOST_PROJECTS_DIR:?set HOST_PROJECTS_DIR in .env to the real repos on this host}:/home/coder/host
