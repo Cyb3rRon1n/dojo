@@ -35,6 +35,14 @@ services:
       - proxy
     labels:
       - "traefik.enable=true"
+      # This service sits on two networks (default + proxy) - without this,
+      # Traefik's docker provider can pick the one it has no route to at all
+      # (found live: it did), dial that unreachable IP, and hang until
+      # Cloudflare's edge times out (~100s -> 504/524). Only ever bites the
+      # authenticated pass-through - Authelia's own redirect for an
+      # unauthenticated request fires before Traefik tries to reach this
+      # service at all, so that path always looked fine.
+      - "traefik.docker.network=${TRAEFIK_NETWORK}"
       - "traefik.http.routers.workspace.rule=Host(`${WORKSPACE_DOMAIN}`)"
       - "traefik.http.routers.workspace.entrypoints=${TRAEFIK_ENTRYPOINTS:-websecure}"
       - "traefik.http.routers.workspace.tls=true"
