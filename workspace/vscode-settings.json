@@ -1,0 +1,7 @@
+{
+  "workbench.colorTheme": "Default Dark Modern",
+  "workbench.startupEditor": "none",
+  "files.autoSave": "afterDelay",
+  "editor.minimap.enabled": false,
+  "terminal.integrated.defaultLocation": "panel"
+}
