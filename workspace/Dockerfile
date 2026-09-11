@@ -58,6 +58,11 @@ RUN uv python install 3.12 3.13 \
 # symlinks from here into the (persisted) home at every start.
 COPY . /opt/dojo
 
+# Default VS Code settings (dark theme, no welcome tab, autosave) — seeded
+# by provision.sh only if the volume doesn't already have one, so it never
+# overwrites a real edit made from inside the workspace.
+COPY workspace/vscode-settings.json /opt/dojo-defaults/vscode-settings.json
+
 # code-server's entrypoint runs every executable in ENTRYPOINTD at start
 # (after fixuid, before code-server) — that is where we (re)wire the stack
 # into whatever the /home/coder volume currently holds. Also kept outside
