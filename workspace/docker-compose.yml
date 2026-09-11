@@ -36,5 +36,27 @@ services:
     # ports:
     #   - "8443:8080"
 
+  # An always-on Orca agent server, paired to from the Orca DESKTOP/MOBILE
+  # app over Tailscale — NOT a browser workspace (orca/Dockerfile explains
+  # why). Optional and separate from the tile above. Enable with:
+  #   docker compose --profile orca up -d --build orca-serve
+  orca-serve:
+    build:
+      context: ..
+      dockerfile: workspace/orca/Dockerfile
+    image: dojo-orca-serve
+    profiles: ["orca"]
+    restart: unless-stopped
+    environment:
+      # Your Tailscale IP for this host — the address advertised to clients.
+      ORCA_PAIRING_ADDRESS: ${ORCA_PAIRING_ADDRESS:-}
+    volumes:
+      - orca-home:/home/orca
+    # No published port by default — Tailscale only, per the security
+    # section in README. For LAN-only use instead:
+    # ports:
+    #   - "6768:6768"
+
 volumes:
   home:
+  orca-home:
