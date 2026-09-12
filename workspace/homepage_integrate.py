@@ -40,11 +40,16 @@ def find_vulcan_stack(search_paths: list[Path] | None = None) -> Path | None:
     return None
 
 
-def merge_tile(services_yaml_path: Path, url: str) -> None:
+def merge_tile(services_yaml_path: Path, url: str, ping: str | None) -> None:
     groups = yaml.safe_load(services_yaml_path.read_text()) or []
     groups = [g for g in groups if GROUP_NAME not in g]
 
-    tile = {TILE_NAME: {"href": url, "icon": "code-server.png", "description": "AI-tooled coding workspace"}}
+    tile_body = {"href": url, "icon": "code-server.png", "description": "AI-tooled coding workspace"}
+    # Pings the container directly over the docker network rather than the
+    # public URL - real container status, no Traefik/Authelia hop in the way.
+    if ping:
+        tile_body["ping"] = ping
+    tile = {TILE_NAME: tile_body}
     insert_at = next((i for i, g in enumerate(groups) if "Guides" in g), len(groups))
     groups.insert(insert_at, {GROUP_NAME: [tile]})
 
@@ -54,6 +59,12 @@ def merge_tile(services_yaml_path: Path, url: str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default="http://localhost:8443", help="workspace URL (default: http://localhost:8443)")
+    parser.add_argument(
+        "--ping",
+        default="http://dojo-workspace-workspace-1:8080",
+        help="internal address Homepage's status dot checks (default: the container's own compose-assigned "
+        "name:port — override if you renamed the compose project/service, or pass '' to omit the status check)",
+    )
     parser.add_argument("--vulcan-dir", type=Path, help="path to Vulcan's stack/ dir (auto-detected if omitted)")
     args = parser.parse_args()
 
@@ -70,7 +81,7 @@ def main() -> int:
               f"({services_yaml_path} doesn't exist) — enable it in Vulcan first.", file=sys.stderr)
         return 1
 
-    merge_tile(services_yaml_path, args.url)
+    merge_tile(services_yaml_path, args.url, args.ping or None)
     print(f"[dojo-workspace] added '{TILE_NAME}' -> {args.url} to {services_yaml_path}")
     return 0
 
