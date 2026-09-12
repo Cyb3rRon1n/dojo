@@ -157,6 +157,12 @@ pip install --user pyyaml   # if not already present
 python3 workspace/homepage_integrate.py --url http://192.168.1.x:8443
 ```
 
+The tile also gets a live status dot (Homepage's built-in ping check) —
+default `--ping` points at the compose-assigned container name:port
+directly, bypassing Traefik/Authelia for a true "is the container actually
+up" signal. Override if you renamed the compose project/service, or pass
+`--ping ''` to omit it.
+
 Auto-detects a sibling `vulcan/stack` (the same layout this workspace repo
 itself uses); pass `--vulcan-dir` for any other layout. Safe to re-run — it
 only ever touches its own "Workspace (dojo)" group, same write-once respect
