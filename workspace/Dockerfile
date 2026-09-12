@@ -81,5 +81,5 @@ COPY workspace/provision.sh /opt/entrypoint.d/10-dojo.sh
 RUN chmod +x /opt/entrypoint.d/10-dojo.sh
 
 USER coder
-EXPOSE 8080
+EXPOSE 8080 8799
 ENTRYPOINT ["/usr/bin/entrypoint.sh", "--bind-addr", "0.0.0.0:8080", "--disable-telemetry", "/home/coder/projects"]
