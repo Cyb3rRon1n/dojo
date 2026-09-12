@@ -15,9 +15,18 @@
 # whole host, not just "containers" — same as everywhere else this project
 # says it. This overlay exists because you asked for exactly that
 # capability; it is not the default, and it is not free.
+#
+# Undoes the base compose file's no-new-privileges/dropped-caps hardening
+# for this service only — found live: provision.sh's `sudo groupadd`/
+# `usermod` (which grants coder the socket's GID so a terminal in here can
+# actually run `docker`) needs sudo's setuid escalation, which
+# no-new-privileges blocks outright. Not a further security loss on top of
+# handing over the host socket already.
 
 services:
   workspace:
+    security_opt: !reset []
+    cap_drop: !reset []
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${HOST_PROJECTS_DIR:?set HOST_PROJECTS_DIR in .env to the real repos on this host}:/home/coder/host

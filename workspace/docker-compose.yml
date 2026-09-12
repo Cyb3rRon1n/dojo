@@ -19,6 +19,18 @@ services:
       dockerfile: workspace/Dockerfile
     image: dojo-workspace
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # No read_only rootfs here (unlike orca-serve below) — found live:
+    # bootstrap.sh re-installs/updates tools into system paths (/usr/local/bin,
+    # /opt/uv/tools) on every start, by design, so agent CLI updates land
+    # without a rebuild; read-only broke that with real "Read-only file
+    # system" failures (rtk's PATH copy, uv tool installs), not just a
+    # theoretical risk. no-new-privileges makes fixuid's setuid re-exec a
+    # harmless no-op instead (this container never runs under a different
+    # UID, so fixuid had nothing to do anyway).
     environment:
       PASSWORD: ${WORKSPACE_PASSWORD:?set WORKSPACE_PASSWORD in .env}
       # Passed through to the agents. Leave blank to log in interactively
@@ -47,6 +59,19 @@ services:
     image: dojo-orca-serve
     profiles: ["orca"]
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      # Verified live: orca reaches "Orca server ready" under the full
+      # read-only + cap-drop ALL + no-new-privileges combination below —
+      # Electron's own dbus-connection errors are harmless (no keyring
+      # available, so it falls back to storing secrets unencrypted in the
+      # /home/orca volume; same as any headless container without dbus).
+      - /run
+      - /tmp
     environment:
       # Your Tailscale IP for this host — the address advertised to clients.
       ORCA_PAIRING_ADDRESS: ${ORCA_PAIRING_ADDRESS:-}

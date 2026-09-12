@@ -7,6 +7,11 @@
 # Usage:
 #   docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d --build
 #
+# Also set COMPOSE_FILE=docker-compose.yml:docker-compose.proxy.yml in .env —
+# found live: a later bare `docker compose up -d` (a reboot's restart script,
+# forgetting the -f flags) silently drops this overlay, no error, and the
+# container comes back without Traefik routing or the proxy network at all.
+#
 # Requires, in .env:
 #   TRAEFIK_NETWORK=<vulcan's compose project name>_default   # e.g. stack_default
 #   WORKSPACE_DOMAIN=workspace.yourdomain.tld
