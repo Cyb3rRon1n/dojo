@@ -242,11 +242,63 @@ def report(q, log):
     return "\n".join(lines)
 
 
+def as_json(q, log):
+    # Flat dict, not {"quality": q, "usage": log} - Homepage's customapi
+    # widget mapping addresses fields by a single top-level path, nesting
+    # would need one mapping entry to reach into two different sub-objects
+    # for what's really one status line.
+    out = {}
+    if log:
+        out.update(
+            tokens_in=log["in"], tokens_out=log["out"], cost=round(log["cost"], 4),
+            cache_read=log["cache_read"], cache_write=log["cache_write"], model=log["model"],
+        )
+    if q:
+        out.update(
+            fill_pct=round(q["fill_pct"] * 100) if q["fill_pct"] else None,
+            health=round(q["health"]) if q["health"] else None,
+            grade=grade(q["health"]) if q["health"] else None,
+            efficiency=round(q["efficiency"]) if q["efficiency"] else None,
+            tool_calls=q["tool_calls"], compactions=q["compactions"], mode=q["mode"],
+        )
+    return out
+
+
+def serve(port):
+    # stdlib only, matching this project's existing http.server precedent
+    # (atlas/web/server.py) - one read-only GET route, no new dependency for
+    # what's a single JSON blob refreshed on every request.
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            q, log = gather()
+            body = json.dumps(as_json(q, log)).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass  # quiet - this runs as a background process, no controlling terminal to spam
+
+    HTTPServer(("0.0.0.0", port), Handler).serve_forever()
+
+
 def main():
+    argv = sys.argv[1:]
+    if "--serve" in argv:
+        serve(int(argv[argv.index("--serve") + 1]))
+        return 0
+
     q, log = gather()
     if not q and not log:
         return 0
-    if "--one-line" in sys.argv[1:]:
+    if "--json" in argv:
+        print(json.dumps(as_json(q, log)))
+        return 0
+    if "--one-line" in argv:
         sys.stdout.write(one_line(q, log))
         return 0
     print(report(q, log))
