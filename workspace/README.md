@@ -163,6 +163,12 @@ directly, bypassing Traefik/Authelia for a true "is the container actually
 up" signal. Override if you renamed the compose project/service, or pass
 `--ping ''` to omit it.
 
+It also gets a token-usage/quality widget — health score, context-fill %,
+tool calls, compactions — sourced from `dojo-tokens.py --serve 8799`, which
+`provision.sh` already runs in the background inside the workspace
+container (no extra setup). Shows `{}` until an agent CLI has actually run
+a session in there. `--stats-url ''` omits the widget.
+
 Auto-detects a sibling `vulcan/stack` (the same layout this workspace repo
 itself uses); pass `--vulcan-dir` for any other layout. Safe to re-run — it
 only ever touches its own "Workspace (dojo)" group, same write-once respect

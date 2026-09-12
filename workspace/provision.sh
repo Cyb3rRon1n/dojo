@@ -44,6 +44,13 @@ exec /usr/bin/gh "$@"
 EOF
 chmod +x "$SHIM/gh"
 
+# Token-usage/quality status for the Homepage tile's widget (see
+# homepage_integrate.py --stats-port) - reads whatever token-optimizer data
+# exists once bootstrap wires it in below; serves {} until then. Backgrounded,
+# not part of code-server's own process tree, so it survives independent of
+# any single terminal session.
+nohup python3 /opt/dojo/dojo-tokens.py --serve 8799 >"$HOME/.dojo-tokens-server.log" 2>&1 &
+
 MARKER="$HOME/.dojo-provisioned"
 run_bootstrap() {
     PATH="$SHIM:$PATH" TOKEN_OPTIMIZE=1 bash /opt/dojo/bootstrap.sh </dev/null
