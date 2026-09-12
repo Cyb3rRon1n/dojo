@@ -73,8 +73,19 @@ injection through a repo or dependency can run code with your permissions.
   #   TRAEFIK_NETWORK=<vulcan's compose project name>_default   # docker network ls | grep -i default
   #   WORKSPACE_DOMAIN=workspace.yourdomain.tld
   #   TRAEFIK_ENTRYPOINTS=websecure,tunnel   # only if Vulcan's Traefik has cloudflared enabled — see below
+  #   COMPOSE_FILE=docker-compose.yml:docker-compose.proxy.yml   # see note below
   docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d --build
   ```
+
+  **Set `COMPOSE_FILE` in `.env` too, not just this one `-f ... -f ...` command.**
+  Found live: a later plain `docker compose up -d` (a reboot's restart script, or
+  just forgetting the flags) silently drops the overlay — no error, it just
+  recreates the container without the Traefik labels or the `proxy` network,
+  and the tile goes dark with no obvious cause. `COMPOSE_FILE` in `.env` makes
+  every bare `docker compose ...` in this directory include the overlay by
+  default, so the flags become optional convenience rather than the only
+  thing keeping this wired up. Add `:docker-compose.manage.yml` to the same
+  variable if you also run that overlay.
 
   Vulcan's Authelia runs `default_policy: one_factor`, so routing through
   Traefik with the `authelia@docker` middleware already requires a login —
@@ -95,8 +106,44 @@ injection through a repo or dependency can run code with your permissions.
 - Use a fine-grained GitHub token scoped to just the repos you work on.
 - Treat the API keys as rotatable; don't reuse your primary ones if you can help it.
 
-Egress allowlisting, dropped capabilities, and a read-only root FS are sensible
-next steps if this box does anything else.
+- **Dropped capabilities**, already on by default: `cap_drop: [ALL]` +
+  `no-new-privileges` on both `workspace` and `orca-serve`. Verified live —
+  code-server and orca-serve both boot clean; the only visible effect is a
+  harmless `fixuid: fixuid is not running as root` warning (fixuid's setuid
+  re-exec is what no-new-privileges blocks, and this container never runs
+  under a different UID, so fixuid had nothing to do anyway).
+- **Read-only root FS**, on by default for `orca-serve` only. `workspace`
+  can't use it — found live: `bootstrap.sh` re-installs/updates tools into
+  system paths (`/usr/local/bin`, `/opt/uv/tools`) on every start, by design,
+  so agent CLI updates land without a rebuild; a read-only rootfs turned that
+  into real `Read-only file system` failures, not just a theoretical risk.
+- **Egress allowlist**: optional `docker-compose.egress.yml` overlay — a
+  squid forward proxy with a domain allowlist (`workspace/egress/`), and the
+  workspace's default network made internal-only so egress-proxy is its only
+  route out. Verified live: an allowlisted domain reaches out fine, anything
+  else gets refused. Edit `workspace/egress/allowed-domains.txt` for what
+  your agents actually call — it ships with the Anthropic/OpenAI APIs,
+  GitHub, npm/PyPI, and the VS Code marketplace; a custom
+  `ANTHROPIC_BASE_URL`/`OPENAI_BASE_URL` needs its own entry.
+
+  ```bash
+  docker compose -f docker-compose.yml -f docker-compose.egress.yml up -d --build
+  ```
+
+  Combines freely with `docker-compose.proxy.yml`. `docker-compose.manage.yml`
+  undoes the dropped-caps/no-new-privileges hardening for `workspace` only —
+  `provision.sh`'s `sudo groupadd`/`usermod` (grants the docker socket's GID
+  to `coder`) needs sudo's setuid escalation, which no-new-privileges blocks;
+  not a further security loss on top of already handing over the host socket.
+
+**Known gap found while verifying this, not fixed here:** `uv tool install`
+for anything not baked at build time (`specify-cli`, pulled by `bootstrap.sh`)
+fails with `Permission denied` — `/opt/uv/tools` is created root-owned during
+the image build (`uv tool install` there runs before `USER coder`), so
+`coder` can't create new subdirectories under it at runtime. Pre-existing,
+independent of the hardening above (reproduces on the unhardened image too).
+Same fix shape as the `/opt/dojo` ownership bug this Dockerfile already
+documents: `chown -R coder /opt/uv/tools` after the build-time installs.
 
 ## Managing the host you run on (optional)
 

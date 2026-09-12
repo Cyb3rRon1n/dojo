@@ -1,0 +1,19 @@
+# One domain per line. squid's dstdomain matches the domain and all
+# subdomains, so "github.com" also covers "api.github.com" etc. — only
+# list the domains that need their own entry.
+#
+# Agent APIs
+.anthropic.com
+.openai.com
+# GitHub (auth, git, releases, raw content, gh CLI's device flow)
+.github.com
+.githubusercontent.com
+.githubassets.com
+# Package registries the CLIs/tools pull from at runtime
+registry.npmjs.org
+.pypi.org
+files.pythonhosted.org
+astral.sh
+# VS Code extension marketplace (code-server ships pointed at Open VSX)
+open-vsx.org
+.ovsx.org
