@@ -52,8 +52,10 @@ def stats_widget(stats_url: str) -> dict:
         "mappings": [
             {"field": "health", "label": "Health", "format": "number", "suffix": "/100"},
             {"field": "fill_pct", "label": "Ctx Fill", "format": "number", "suffix": "%"},
-            {"field": "tool_calls", "label": "Tool Calls", "format": "number"},
             {"field": "compactions", "label": "Compactions", "format": "number"},
+            {"field": "five_hour_pct", "label": "5h Limit", "format": "number", "suffix": "%"},
+            {"field": "five_hour_reset", "label": "5h Resets", "format": "text"},
+            {"field": "seven_day_pct", "label": "7d Limit", "format": "number", "suffix": "%"},
         ],
     }
 

@@ -179,8 +179,32 @@ def collect_json(root):
     return q, None
 
 
+def fmt_reset(epoch_seconds):
+    # Mirrors statusline.js's fmtReset: 12-hour clock, lowercase a/p suffix.
+    if not isinstance(epoch_seconds, (int, float)) or epoch_seconds <= 0:
+        return None
+    import datetime
+    d = datetime.datetime.fromtimestamp(epoch_seconds)
+    h = d.hour % 12 or 12
+    return f"{h}:{d.minute:02d}{'p' if d.hour >= 12 else 'a'}"
+
+
+def collect_rate_limits(root):
+    # Written only by the Claude Code statusline (token-optimizer's
+    # statusline.js) as an account-wide sidecar, same directory as the
+    # quality cache - not per-session, so there's exactly one file to read.
+    try:
+        d = json.load(open(os.path.join(root, "rate-limits.json")))
+        stamp = d.get("timestamp") or 0
+        if stamp > 1e12:  # JS Date.now() is milliseconds
+            stamp /= 1000
+        return {"stamp": stamp, "five_hour": d.get("five_hour"), "seven_day": d.get("seven_day")}
+    except (OSError, ValueError):
+        return None
+
+
 def gather():
-    q_best, log_best = None, None
+    q_best, log_best, rl_best = None, None, None
     for root in candidate_roots():
         qs, ls = collect_sqlite(root)
         qj, _ = collect_json(root)
@@ -189,7 +213,10 @@ def gather():
                 q_best = cand
         if ls and (log_best is None or ls["stamp"] > log_best["stamp"]):
             log_best = ls
-    return q_best, log_best
+        rl = collect_rate_limits(root)
+        if rl and (rl_best is None or rl["stamp"] > rl_best["stamp"]):
+            rl_best = rl
+    return q_best, log_best, rl_best
 
 
 def one_line(q, log):
@@ -242,11 +269,11 @@ def report(q, log):
     return "\n".join(lines)
 
 
-def as_json(q, log):
-    # Flat dict, not {"quality": q, "usage": log} - Homepage's customapi
-    # widget mapping addresses fields by a single top-level path, nesting
-    # would need one mapping entry to reach into two different sub-objects
-    # for what's really one status line.
+def as_json(q, log, rl=None):
+    # Flat dict, not {"quality": q, "usage": log, "limits": rl} - Homepage's
+    # customapi widget mapping addresses fields by a single top-level path,
+    # nesting would need one mapping entry to reach into different
+    # sub-objects for what's really one status line.
     out = {}
     if log:
         out.update(
@@ -261,6 +288,13 @@ def as_json(q, log):
             efficiency=round(q["efficiency"]) if q["efficiency"] else None,
             tool_calls=q["tool_calls"], compactions=q["compactions"], mode=q["mode"],
         )
+    if rl:
+        fh, sd = rl.get("five_hour"), rl.get("seven_day")
+        if fh:
+            out["five_hour_pct"] = round(fh["used_percentage"]) if fh.get("used_percentage") is not None else None
+            out["five_hour_reset"] = fmt_reset(fh.get("resets_at"))
+        if sd:
+            out["seven_day_pct"] = round(sd["used_percentage"]) if sd.get("used_percentage") is not None else None
     return out
 
 
@@ -272,8 +306,8 @@ def serve(port):
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
-            q, log = gather()
-            body = json.dumps(as_json(q, log)).encode()
+            q, log, rl = gather()
+            body = json.dumps(as_json(q, log, rl)).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
@@ -292,11 +326,11 @@ def main():
         serve(int(argv[argv.index("--serve") + 1]))
         return 0
 
-    q, log = gather()
+    q, log, rl = gather()
     if not q and not log:
         return 0
     if "--json" in argv:
-        print(json.dumps(as_json(q, log)))
+        print(json.dumps(as_json(q, log, rl)))
         return 0
     if "--one-line" in argv:
         sys.stdout.write(one_line(q, log))
