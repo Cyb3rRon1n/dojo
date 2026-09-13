@@ -23,6 +23,13 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    # Caps whatever runs in this container's terminal (an agent, a manually
+    # launched LLM server, anything) to a slice of the host instead of the
+    # whole machine. Found live: an unbounded `ollama serve` launched from
+    # this workspace pegged all 88 threads and drove cyberpac to 98C (its
+    # thermal-critical threshold). Override per-host in .env if needed.
+    cpus: ${WORKSPACE_CPU_LIMIT:-16}
+    mem_limit: ${WORKSPACE_MEM_LIMIT:-64g}
     # No read_only rootfs here (unlike orca-serve below) — found live:
     # bootstrap.sh re-installs/updates tools into system paths (/usr/local/bin,
     # /opt/uv/tools) on every start, by design, so agent CLI updates land
