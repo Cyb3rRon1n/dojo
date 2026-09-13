@@ -31,6 +31,11 @@ HOST_NOTE_FILE="$HOME/projects/CLAUDE.md"
 if [ -n "${WORKSPACE_HOST_NOTE:-}" ] && [ ! -f "$HOST_NOTE_FILE" ]; then
     printf '# Deployment context\n\n%s\n' "$WORKSPACE_HOST_NOTE" > "$HOST_NOTE_FILE"
 fi
+# opencode reads AGENTS.md (its own convention), not CLAUDE.md - symlink so
+# both tools see the same host-context note with no drift between them.
+if [ -f "$HOST_NOTE_FILE" ] && [ ! -e "$HOME/projects/AGENTS.md" ]; then
+    ln -s CLAUDE.md "$HOME/projects/AGENTS.md"
+fi
 
 VSCODE_SETTINGS="$HOME/.local/share/code-server/User/settings.json"
 if [ ! -f "$VSCODE_SETTINGS" ] && [ -f /opt/dojo-defaults/vscode-settings.json ]; then
