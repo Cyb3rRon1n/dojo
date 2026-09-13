@@ -1,0 +1,10 @@
+[Unit]
+Description=Run thermal watchdog every 15s
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=15s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target
