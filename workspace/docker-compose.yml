@@ -19,6 +19,25 @@ services:
       dockerfile: workspace/Dockerfile
     image: dojo-workspace
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # Caps whatever runs in this container's terminal (an agent, a manually
+    # launched LLM server, anything) to a slice of the host instead of the
+    # whole machine. Found live: an unbounded `ollama serve` launched from
+    # this workspace pegged all 88 threads and drove cyberpac to 98C (its
+    # thermal-critical threshold). Override per-host in .env if needed.
+    cpus: ${WORKSPACE_CPU_LIMIT:-16}
+    mem_limit: ${WORKSPACE_MEM_LIMIT:-64g}
+    # No read_only rootfs here (unlike orca-serve below) — found live:
+    # bootstrap.sh re-installs/updates tools into system paths (/usr/local/bin,
+    # /opt/uv/tools) on every start, by design, so agent CLI updates land
+    # without a rebuild; read-only broke that with real "Read-only file
+    # system" failures (rtk's PATH copy, uv tool installs), not just a
+    # theoretical risk. no-new-privileges makes fixuid's setuid re-exec a
+    # harmless no-op instead (this container never runs under a different
+    # UID, so fixuid had nothing to do anyway).
     environment:
       PASSWORD: ${WORKSPACE_PASSWORD:?set WORKSPACE_PASSWORD in .env}
       # Passed through to the agents. Leave blank to log in interactively
@@ -26,6 +45,11 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      # Free-text deployment note seeded into ~/projects/CLAUDE.md on first
+      # boot (see provision.sh) - e.g. "This runs on cyberpac, 192.168.x.x,
+      # alongside the vulcan stack at ~/vulcan/stack." Host-specific, so it
+      # belongs in this host's own .env, never in this (public) repo.
+      WORKSPACE_HOST_NOTE: ${WORKSPACE_HOST_NOTE:-}
     volumes:
       # Everything the workspace should keep. Tools live in system paths in
       # the image, so this volume never shadows them.
@@ -47,6 +71,19 @@ services:
     image: dojo-orca-serve
     profiles: ["orca"]
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      # Verified live: orca reaches "Orca server ready" under the full
+      # read-only + cap-drop ALL + no-new-privileges combination below —
+      # Electron's own dbus-connection errors are harmless (no keyring
+      # available, so it falls back to storing secrets unencrypted in the
+      # /home/orca volume; same as any headless container without dbus).
+      - /run
+      - /tmp
     environment:
       # Your Tailscale IP for this host — the address advertised to clients.
       ORCA_PAIRING_ADDRESS: ${ORCA_PAIRING_ADDRESS:-}

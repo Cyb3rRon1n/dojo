@@ -20,6 +20,23 @@ if [ -S /var/run/docker.sock ]; then
 fi
 mkdir -p "$HOME/projects"
 
+# Seeds a project-parent CLAUDE.md so agents working under ~/projects/<repo>
+# know what host/stack this container sits next to - each cloned repo's own
+# CLAUDE.md documents that repo's code, not the deployment it's running in,
+# and this container's hostname is just a random Docker ID. Written once
+# from WORKSPACE_HOST_NOTE (this host's own .env, never this public repo);
+# never overwritten once present, so a manual edit (or a blank note this
+# host never set) always wins over re-running provisioning.
+HOST_NOTE_FILE="$HOME/projects/CLAUDE.md"
+if [ -n "${WORKSPACE_HOST_NOTE:-}" ] && [ ! -f "$HOST_NOTE_FILE" ]; then
+    printf '# Deployment context\n\n%s\n' "$WORKSPACE_HOST_NOTE" > "$HOST_NOTE_FILE"
+fi
+# opencode reads AGENTS.md (its own convention), not CLAUDE.md - symlink so
+# both tools see the same host-context note with no drift between them.
+if [ -f "$HOST_NOTE_FILE" ] && [ ! -e "$HOME/projects/AGENTS.md" ]; then
+    ln -s CLAUDE.md "$HOME/projects/AGENTS.md"
+fi
+
 VSCODE_SETTINGS="$HOME/.local/share/code-server/User/settings.json"
 if [ ! -f "$VSCODE_SETTINGS" ] && [ -f /opt/dojo-defaults/vscode-settings.json ]; then
     mkdir -p "$(dirname "$VSCODE_SETTINGS")"
